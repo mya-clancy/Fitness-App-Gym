@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useHunter } from '../../context/HunterContext';
 import { loginWithGoogle, logoutUser } from '../../config/firebase';
+import { getPhilippineTimeString } from '../../utils/phTime';
+import { HunterCalendarModal } from '../calendar/HunterCalendarModal';
 import {
   Volume2,
   VolumeX,
@@ -30,13 +32,11 @@ export const CyberHeader: React.FC = () => {
   const [currentTime, setCurrentTime] = useState<string>('');
   const [showResetModal, setShowResetModal] = useState<boolean>(false);
   const [resetSuccess, setResetSuccess] = useState<boolean>(false);
+  const [showCalendarModal, setShowCalendarModal] = useState<boolean>(false);
 
   useEffect(() => {
     const updateTime = () => {
-      const now = new Date();
-      setCurrentTime(
-        now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-      );
+      setCurrentTime(getPhilippineTimeString(new Date()));
     };
     updateTime();
     const interval = setInterval(updateTime, 1000);
@@ -88,20 +88,30 @@ export const CyberHeader: React.FC = () => {
 
           {/* Center / Right controls */}
           <div className="flex items-center flex-wrap gap-2 sm:gap-2.5 text-xs font-mono">
-            {/* Live System Time */}
+            {/* Live Philippine Standard Time */}
             <div className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900/70 border border-slate-800 text-slate-300">
               <Activity className="w-3.5 h-3.5 text-cyan-400" />
-              <span>SYS_TIME: {currentTime}</span>
+              <span>PH_TIME (UTC+8): {currentTime}</span>
             </div>
 
-            {/* Date Picker */}
-            <div className="flex items-center gap-1 bg-slate-900/80 border border-slate-800 rounded-lg px-2.5 py-1 text-slate-300">
+            {/* Interactive Calendar Modal Trigger */}
+            <button
+              onClick={() => setShowCalendarModal(true)}
+              title="Open full interactive progress & macro calendar"
+              className="flex items-center gap-1.5 bg-cyan-950/70 hover:bg-cyan-900/80 border border-cyan-500/40 hover:border-cyan-400 text-cyan-300 rounded-lg px-2.5 py-1 text-xs font-mono transition-all cursor-pointer shadow-[0_0_12px_rgba(6,182,212,0.25)]"
+            >
               <Calendar className="w-3.5 h-3.5 text-cyan-400" />
+              <span className="font-bold">CALENDAR</span>
+            </button>
+
+            {/* Quick Date Picker */}
+            <div className="flex items-center gap-1 bg-slate-900/80 border border-slate-800 rounded-lg px-2 py-1 text-slate-300">
               <input
                 type="date"
                 value={selectedDate}
                 onChange={(e) => setSelectedDate(e.target.value)}
                 className="bg-transparent text-slate-200 text-xs focus:outline-none cursor-pointer"
+                title="Direct date select"
               />
             </div>
 
@@ -223,6 +233,12 @@ export const CyberHeader: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Interactive Progress & Macro Calendar Modal */}
+      <HunterCalendarModal
+        isOpen={showCalendarModal}
+        onClose={() => setShowCalendarModal(false)}
+      />
     </>
   );
 };

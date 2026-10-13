@@ -14,6 +14,7 @@ import { SplitBuilder } from './components/workout/SplitBuilder';
 import { ActiveWorkoutView } from './components/workout/ActiveWorkoutView';
 import { HunterStatusView } from './components/profile/HunterStatusView';
 import { FitnessAiChatModal } from './components/chat/FitnessAiChatModal';
+import { WorkoutSplit } from './types/hunter';
 import {
   Sparkles,
   Camera,
@@ -31,8 +32,9 @@ const MainDashboard: React.FC<{
   onOpenScanner: () => void;
   onOpenCardio: () => void;
   onOpenSplitBuilder: () => void;
+  onEditSplit: (split: WorkoutSplit) => void;
   onOpenAiChat: () => void;
-}> = ({ onOpenScanner, onOpenCardio, onOpenSplitBuilder, onOpenAiChat }) => {
+}> = ({ onOpenScanner, onOpenCardio, onOpenSplitBuilder, onEditSplit, onOpenAiChat }) => {
   return (
     <div className="space-y-6">
       {/* 1. Player Level & XP Progression Card */}
@@ -109,7 +111,10 @@ const MainDashboard: React.FC<{
 
       {/* Dual Column: Active Workout Quest & Today's Meals */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <ActiveWorkoutView onOpenSplitBuilder={onOpenSplitBuilder} />
+        <ActiveWorkoutView
+          onOpenSplitBuilder={onOpenSplitBuilder}
+          onEditSplit={onEditSplit}
+        />
         <DailyMealList onOpenScanner={onOpenScanner} />
       </div>
     </div>
@@ -121,7 +126,18 @@ export default function App() {
   const [scannerOpen, setScannerOpen] = useState<boolean>(false);
   const [cardioOpen, setCardioOpen] = useState<boolean>(false);
   const [splitBuilderOpen, setSplitBuilderOpen] = useState<boolean>(false);
+  const [editingSplit, setEditingSplit] = useState<WorkoutSplit | null>(null);
   const [aiChatOpen, setAiChatOpen] = useState<boolean>(false);
+
+  const handleOpenCreateSplit = () => {
+    setEditingSplit(null);
+    setSplitBuilderOpen(true);
+  };
+
+  const handleOpenEditSplit = (split: WorkoutSplit) => {
+    setEditingSplit(split);
+    setSplitBuilderOpen(true);
+  };
 
   return (
     <HunterProvider>
@@ -140,7 +156,8 @@ export default function App() {
             <MainDashboard
               onOpenScanner={() => setScannerOpen(true)}
               onOpenCardio={() => setCardioOpen(true)}
-              onOpenSplitBuilder={() => setSplitBuilderOpen(true)}
+              onOpenSplitBuilder={handleOpenCreateSplit}
+              onEditSplit={handleOpenEditSplit}
               onOpenAiChat={() => setAiChatOpen(true)}
             />
           )}
@@ -158,7 +175,10 @@ export default function App() {
 
           {activeTab === 'workout' && (
             <div className="space-y-6">
-              <ActiveWorkoutView onOpenSplitBuilder={() => setSplitBuilderOpen(true)} />
+              <ActiveWorkoutView
+                onOpenSplitBuilder={handleOpenCreateSplit}
+                onEditSplit={handleOpenEditSplit}
+              />
             </div>
           )}
 
@@ -179,7 +199,14 @@ export default function App() {
         {/* Global Modals */}
         <FoodScannerModal isOpen={scannerOpen} onClose={() => setScannerOpen(false)} />
         <CardioLoggerModal isOpen={cardioOpen} onClose={() => setCardioOpen(false)} />
-        <SplitBuilder isOpen={splitBuilderOpen} onClose={() => setSplitBuilderOpen(false)} />
+        <SplitBuilder
+          isOpen={splitBuilderOpen}
+          onClose={() => {
+            setSplitBuilderOpen(false);
+            setEditingSplit(null);
+          }}
+          editingSplit={editingSplit}
+        />
         <FitnessAiChatModal isOpen={aiChatOpen} onClose={() => setAiChatOpen(false)} />
         <LevelUpModal />
       </div>

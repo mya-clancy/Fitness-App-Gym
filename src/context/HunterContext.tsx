@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import {
   doc,
@@ -23,6 +23,7 @@ import {
   triggerLevelUpConfetti,
   sound,
 } from '../utils/gamification';
+import { getPhilippineDateString } from '../utils/phTime';
 
 interface HunterContextType {
   user: User | null;
@@ -47,6 +48,10 @@ interface HunterContextType {
   ) => Promise<void>;
   addWorkoutSplit: (
     split: Omit<WorkoutSplit, 'splitId' | 'userId' | 'createdAt' | 'updatedAt'>
+  ) => Promise<void>;
+  updateWorkoutSplit: (
+    splitId: string,
+    updatedData: Partial<WorkoutSplit>
   ) => Promise<void>;
   deleteWorkoutSplit: (splitId: string) => Promise<void>;
   deleteDayFromSplit: (splitId: string, dayId: string) => Promise<void>;
@@ -269,7 +274,7 @@ export const HunterProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState<boolean>(true);
   const [selectedDate, setSelectedDate] = useState<string>(() => {
-    return new Date().toISOString().split('T')[0];
+    return getPhilippineDateString();
   });
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
 
@@ -310,9 +315,9 @@ export const HunterProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return { ...defaultInitialProfile, ...levelData, displayName: 'Jon', totalXp: 0 };
   });
 
-  // Daily log state - clean starting slate
+  // Daily log state in Philippine Standard Time (PST, UTC+8)
   const [dailyLog, setDailyLog] = useState<DailyLogData>(() => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = getPhilippineDateString();
     const saved = localStorage.getItem(`hunter_log_${today}`);
     if (saved) {
       try {
@@ -427,6 +432,58 @@ export const HunterProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       updatedAt: new Date().toISOString(),
     });
   }, [selectedDate, user, dailyLog.date]);
+
+  // Track active Philippine Date reference for 12:00 AM midnight reset
+  const phDateRef = useRef<string>(getPhilippineDateString());
+
+  // Automatic midnight transition checker (Philippine Time Asia/Manila, UTC+8)
+  useEffect(() => {
+    const checkMidnight = () => {
+      const currentPhDate = getPhilippineDateString();
+      if (currentPhDate !== phDateRef.current) {
+        const previousDate = phDateRef.current;
+        phDateRef.current = currentPhDate;
+
+        // Auto-advance date to new Philippine day if user was on the current date
+        setSelectedDate((prevDate) => (prevDate === previousDate ? currentPhDate : prevDate));
+
+        // Reset or load daily log for the fresh Philippine day
+        const savedLog = localStorage.getItem(`hunter_log_${currentPhDate}`);
+        if (savedLog) {
+          try {
+            setDailyLog(JSON.parse(savedLog));
+          } catch {
+            setDailyLog({
+              date: currentPhDate,
+              userId: user ? user.uid : 'local-hunter',
+              meals: [],
+              cardio: [],
+              completedExercisesToday: [],
+              updatedAt: new Date().toISOString(),
+            });
+          }
+        } else {
+          setDailyLog({
+            date: currentPhDate,
+            userId: user ? user.uid : 'local-hunter',
+            meals: [],
+            cardio: [],
+            completedExercisesToday: [],
+            updatedAt: new Date().toISOString(),
+          });
+        }
+
+        // Display midnight reset alert
+        setRecentXpNotification({
+          xp: 0,
+          reason: 'PH MIDNIGHT RESET: 12:00 AM (Asia/Manila). Daily macro progress & quests reset!',
+        });
+      }
+    };
+
+    const interval = setInterval(checkMidnight, 5000);
+    return () => clearInterval(interval);
+  }, [user]);
 
   // Sync Firestore when user is authenticated
   useEffect(() => {
@@ -792,6 +849,34 @@ export const HunterProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     [workoutSplits, user, awardXp]
   );
 
+  // Update existing custom split
+  const updateWorkoutSplit = useCallback(
+    async (splitId: string, updatedData: Partial<WorkoutSplit>) => {
+      const updatedSplits = workoutSplits.map((s) => {
+        if (s.splitId !== splitId) return s;
+        return {
+          ...s,
+          ...updatedData,
+          updatedAt: new Date().toISOString(),
+        };
+      });
+
+      setWorkoutSplits(updatedSplits);
+      sound.play('click');
+
+      if (user) {
+        const splitDocRef = doc(db, 'users', user.uid, 'workoutSplits', splitId);
+        const target = updatedSplits.find((s) => s.splitId === splitId);
+        if (target) {
+          await setDoc(splitDocRef, target, { merge: true }).catch((err) => {
+            handleFirestoreError(err, OperationType.UPDATE, `users/${user.uid}/workoutSplits/${splitId}`);
+          });
+        }
+      }
+    },
+    [workoutSplits, user]
+  );
+
   // Delete custom split
   const deleteWorkoutSplit = useCallback(
     async (splitId: string) => {
@@ -1075,6 +1160,7 @@ export const HunterProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       deleteCardio,
       toggleExerciseCompletion,
       addWorkoutSplit,
+      updateWorkoutSplit,
       deleteWorkoutSplit,
       deleteDayFromSplit,
       deleteExerciseFromSplit,
@@ -1104,6 +1190,7 @@ export const HunterProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       deleteCardio,
       toggleExerciseCompletion,
       addWorkoutSplit,
+      updateWorkoutSplit,
       deleteWorkoutSplit,
       deleteDayFromSplit,
       deleteExerciseFromSplit,

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useHunter } from '../../context/HunterContext';
-import { WorkoutDay, ExerciseItem } from '../../types/hunter';
+import { WorkoutDay, ExerciseItem, WorkoutSplit } from '../../types/hunter';
 import {
   Layers,
   Plus,
@@ -17,37 +17,65 @@ import {
 interface SplitBuilderProps {
   isOpen: boolean;
   onClose: () => void;
+  editingSplit?: WorkoutSplit | null;
 }
 
-export const SplitBuilder: React.FC<SplitBuilderProps> = ({ isOpen, onClose }) => {
-  const { addWorkoutSplit } = useHunter();
+export const SplitBuilder: React.FC<SplitBuilderProps> = ({ isOpen, onClose, editingSplit }) => {
+  const { addWorkoutSplit, updateWorkoutSplit } = useHunter();
 
   const [splitName, setSplitName] = useState<string>('');
   const [splitDescription, setSplitDescription] = useState<string>('');
-  const [days, setDays] = useState<WorkoutDay[]>([
-    {
-      id: 'day_' + Date.now(),
-      dayName: 'Day 1: Hypertrophy Chest & Triceps',
-      targetFocus: 'Chest, Anterior Delts & Triceps',
-      exercises: [
+  const [days, setDays] = useState<WorkoutDay[]>([]);
+  const [expandedDayId, setExpandedDayId] = useState<string>('');
+  const [exerciseDayTarget, setExerciseDayTarget] = useState<string>('');
+
+  React.useEffect(() => {
+    if (!isOpen) return;
+    if (editingSplit) {
+      setSplitName(editingSplit.name);
+      setSplitDescription(editingSplit.description);
+      const initialDays =
+        editingSplit.days && editingSplit.days.length > 0
+          ? editingSplit.days
+          : [
+              {
+                id: 'day_' + Date.now(),
+                dayName: 'Day 1: Training Session',
+                targetFocus: 'Strength & Hypertrophy',
+                exercises: [],
+              },
+            ];
+      setDays(initialDays);
+      setExpandedDayId(initialDays[0]?.id || '');
+      setExerciseDayTarget(initialDays[0]?.id || '');
+    } else {
+      const defaultId = 'day_' + Date.now();
+      const defaultDays: WorkoutDay[] = [
         {
-          id: 'ex_' + Date.now() + '_1',
-          name: 'Barbell Flat Bench Press',
-          targetMuscle: 'Chest',
-          sets: 4,
-          reps: 8,
-          weightKg: 80,
-          xpValue: 350,
-          progressiveOverloadTip: 'Aim for +2.5kg next cycle when all sets hit 8 reps clean.',
+          id: defaultId,
+          dayName: 'Day 1: Hypertrophy Chest & Triceps',
+          targetFocus: 'Chest, Anterior Delts & Triceps',
+          exercises: [
+            {
+              id: 'ex_' + Date.now() + '_1',
+              name: 'Barbell Flat Bench Press',
+              targetMuscle: 'Chest',
+              sets: 4,
+              reps: 8,
+              weightKg: 80,
+              xpValue: 350,
+              progressiveOverloadTip: 'Aim for +2.5kg next cycle when all sets hit 8 reps clean.',
+            },
+          ],
         },
-      ],
-    },
-  ]);
-
-  const [expandedDayId, setExpandedDayId] = useState<string>(days[0]?.id || '');
-
-  // Form for adding an exercise to the currently selected day
-  const [exerciseDayTarget, setExerciseDayTarget] = useState<string>(days[0]?.id || '');
+      ];
+      setSplitName('');
+      setSplitDescription('');
+      setDays(defaultDays);
+      setExpandedDayId(defaultId);
+      setExerciseDayTarget(defaultId);
+    }
+  }, [isOpen, editingSplit]);
   const [exName, setExName] = useState<string>('');
   const [exTargetMuscle, setExTargetMuscle] = useState<string>('Chest');
   const [exSets, setExSets] = useState<number>(3);
@@ -123,11 +151,19 @@ export const SplitBuilder: React.FC<SplitBuilderProps> = ({ isOpen, onClose }) =
     e.preventDefault();
     if (!splitName.trim()) return;
 
-    await addWorkoutSplit({
-      name: splitName,
-      description: splitDescription || 'Custom Solo Leveling routine engineered for progressive overload.',
-      days,
-    });
+    if (editingSplit) {
+      await updateWorkoutSplit(editingSplit.splitId, {
+        name: splitName.trim(),
+        description: splitDescription.trim() || 'Custom workout routine engineered for progressive overload.',
+        days,
+      });
+    } else {
+      await addWorkoutSplit({
+        name: splitName.trim(),
+        description: splitDescription.trim() || 'Custom workout routine engineered for progressive overload.',
+        days,
+      });
+    }
 
     onClose();
   };
@@ -143,10 +179,12 @@ export const SplitBuilder: React.FC<SplitBuilderProps> = ({ isOpen, onClose }) =
             </div>
             <div>
               <h3 className="text-xl font-extrabold text-white font-heading tracking-wide">
-                CUSTOM WORKOUT SPLIT BUILDER
+                {editingSplit ? 'EDIT WORKOUT SPLIT' : 'CUSTOM WORKOUT SPLIT BUILDER'}
               </h3>
               <p className="text-xs text-cyan-400/80 font-mono">
-                Hierarchy: Custom Split &rarr; Training Days &rarr; Exercises + XP (100–500)
+                {editingSplit
+                  ? `Modifying: ${editingSplit.name} // Adjust training days & exercises`
+                  : 'Hierarchy: Custom Split → Training Days → Exercises + XP (100–500)'}
               </p>
             </div>
           </div>
@@ -454,7 +492,7 @@ export const SplitBuilder: React.FC<SplitBuilderProps> = ({ isOpen, onClose }) =
               className="bg-gradient-to-r from-cyan-400 to-blue-600 hover:from-cyan-300 hover:to-blue-500 text-black font-extrabold px-6 py-2.5 rounded-xl text-xs font-heading shadow-[0_0_20px_rgba(6,182,212,0.4)] transition-all cursor-pointer flex items-center gap-1.5"
             >
               <Check className="w-4 h-4" />
-              <span>SAVE CUSTOM SPLIT ROUTINE</span>
+              <span>{editingSplit ? 'UPDATE SPLIT ROUTINE' : 'SAVE CUSTOM SPLIT ROUTINE'}</span>
             </button>
           </div>
         </form>

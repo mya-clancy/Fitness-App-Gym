@@ -262,8 +262,10 @@ export async function chatWithFitnessAi(
   }
 ): Promise<string> {
   const apiKey = process.env.GEMINI_API_KEY;
+  const name = hunterContext?.playerName || "Jon";
+  const userMessages = messages.filter((m) => m.content && m.content.trim().length > 0);
 
-  if (apiKey && apiKey !== "MY_GEMINI_API_KEY") {
+  if (apiKey && apiKey !== "MY_GEMINI_API_KEY" && userMessages.length > 0) {
     try {
       const ai = new GoogleGenAI({
         apiKey,
@@ -274,49 +276,115 @@ export async function chatWithFitnessAi(
         },
       });
 
-      const formattedContents = messages.map((m) => ({
-        role: m.role === "assistant" ? "model" : "user",
-        parts: [{ text: m.content }],
-      }));
+      // Filter and format messages:
+      // In Gemini API, multi-turn conversations MUST start with role: 'user'
+      // and alternate between 'user' and 'model'.
+      const formattedContents: Array<{ role: "user" | "model"; parts: Array<{ text: string }> }> = [];
 
-      const contextNote = hunterContext
-        ? `User Hunter Context: Player Name: ${hunterContext.playerName || "Jon"}, Level: ${hunterContext.level || 1}, Rank: ${hunterContext.rank || "E-Rank"}, Daily Calorie Goal: ${hunterContext.calorieGoal || 2500} kcal, Protein Goal: ${hunterContext.proteinGoal || 180}g.`
-        : "";
+      for (const m of userMessages) {
+        const geminiRole = m.role === "assistant" ? ("model" as const) : ("user" as const);
+        
+        // Skip leading assistant/model messages
+        if (formattedContents.length === 0 && geminiRole === "model") {
+          continue;
+        }
 
-      const response = await ai.models.generateContent({
-        model: "gemini-3.8-flash",
-        contents: formattedContents,
-        config: {
-          systemInstruction: `You are Sung Jin Woo, the Shadow Monarch and Master Strength & Conditioning Coach at "Sung Jin Woo's Den" in the Fitness Buddy app.
+        // If the same role occurs consecutively, merge parts
+        const last = formattedContents[formattedContents.length - 1];
+        if (last && last.role === geminiRole) {
+          last.parts.push({ text: m.content });
+        } else {
+          formattedContents.push({
+            role: geminiRole,
+            parts: [{ text: m.content }],
+          });
+        }
+      }
+
+      // If after formatting we have at least one user turn, call Gemini
+      if (formattedContents.length > 0 && formattedContents[0].role === "user") {
+        const contextNote = hunterContext
+          ? `User Hunter Context: Player Name: ${name}, Level: ${hunterContext.level || 1}, Rank: ${hunterContext.rank || "E-Rank"}, Daily Calorie Goal: ${hunterContext.calorieGoal || 2500} kcal, Protein Goal: ${hunterContext.proteinGoal || 180}g.`
+          : "";
+
+        const response = await ai.models.generateContent({
+          model: "gemini-3.8-flash",
+          contents: formattedContents,
+          config: {
+            systemInstruction: `You are Sung Jin Woo, the Shadow Monarch and Master Strength & Conditioning Coach at "Sung Jin Woo's Den" in the Fitness Buddy app.
 ${contextNote}
 Persona & Voice:
-- You are Sung Jin Woo: calm, composed, observant, encouraging, and deeply disciplined. You embody the relentless work ethic of the Shadow Monarch.
-- You are an expert scientific sports dietitian and strength coach.
-- Your advice is grounded in exercise physiology: progressive overload (micro-loading, +1 rep rule, tempo, RPE), optimal protein intake (1.6–2.2g/kg bodyweight), calorie energy balance, Zone 2 aerobic endurance (Huawei Health telemetry), and metabolic recovery.
-- Maintain your identity as Coach Sung Jin Woo at all times. Address the user respectfully as Hunter or ${hunterContext?.playerName || "Jon"}. Keep answers punchy, actionable, and inspiring without unnecessary filler.`,
-        },
-      });
+- You are Sung Jin Woo: calm, composed, observant, encouraging, highly knowledgeable, and disciplined. You embody the quiet strength and relentless mindset of the Shadow Monarch.
+- You are an expert sports nutritionist and strength & conditioning coach.
+- Always directly and thoroughly answer the user's specific fitness, nutrition, workout, or recovery question.
+- Ground advice in scientific exercise physiology: progressive overload (micro-loading, +1 rep rule, tempo, RPE), optimal protein intake (1.6–2.2g/kg), calorie energy balance, Zone 2 endurance cardio, mobility, and sleep recovery.
+- Maintain your persona as Coach Sung Jin Woo at all times. Address the user as Hunter ${name}. Keep answers punchy, structured with bullet points when helpful, and immediately actionable.`,
+          },
+        });
 
-      if (response.text) {
-        return response.text;
+        if (response.text && response.text.trim().length > 0) {
+          return response.text.trim();
+        }
       }
     } catch (err) {
       console.error("Gemini chat error:", err);
     }
   }
 
-  // Fallback intelligent coaching response from Sung Jin Woo
-  const lastUserMsg = messages[messages.length - 1]?.content.toLowerCase() || "";
-  const name = hunterContext?.playerName || "Jon";
-  if (lastUserMsg.includes("protein")) {
-    return `Hunter ${name}, in my training experience, protein is your fundamental building block. For muscle hypertrophy, target 1.6 to 2.2 grams per kilogram of body weight. Distribute this across 3–4 meals with 30–40g of high-quality protein per feeding to maintain consistent muscle protein synthesis.`;
+  // Fallback intelligent coaching response from Sung Jin Woo covering user questions
+  const lastUserMsg = [...userMessages].reverse().find((m) => m.role === "user")?.content.toLowerCase() || "";
+
+  if (lastUserMsg.includes("split") || lastUserMsg.includes("routine") || lastUserMsg.includes("program")) {
+    return `Hunter ${name}, for optimal hypertrophy and strength progression, choose a split based on your weekly frequency:
+• **Push / Pull / Legs (PPL)**: 3 to 6 days/week. The gold standard for isolating muscle groups while allowing 48–72 hours of recovery per group.
+• **Upper / Lower**: 4 days/week. Outstanding for balancing heavy compound lifts with athletic recovery.
+• **Full Body**: 3 days/week. Maximum frequency per muscle group, ideal if your schedule is constrained.
+Select the split in your Quest Tracker and log every working set. The system rewards consistency above all.`;
   }
-  if (lastUserMsg.includes("bench") || lastUserMsg.includes("plateau") || lastUserMsg.includes("squat") || lastUserMsg.includes("overload")) {
-    return `To break past any barrier, Hunter ${name}, apply progressive overload systematically: 1) Add 1 rep to your top sets before raising load, 2) Micro-load with 1.25kg increments, or 3) Enforce a 3-second eccentric tempo. The system only rewards those who consistently push beyond their prior limits.`;
+
+  if (lastUserMsg.includes("protein") || lastUserMsg.includes("macro") || lastUserMsg.includes("food") || lastUserMsg.includes("eat")) {
+    return `Hunter ${name}, protein is your biological armor.
+• **Optimal Target**: Aim for 1.6 to 2.2 grams per kilogram of body weight (your goal is currently ${hunterContext?.proteinGoal || 180}g/day).
+• **Meal Distribution**: Spread this across 3–4 meals with 30–45g of high-leucine protein (chicken breast, lean beef, eggs, whey, Greek yogurt) per meal.
+• **Energy Balance**: Align your daily calories with your current objective (maintenance: ~${hunterContext?.calorieGoal || 2500} kcal, slight surplus for building mass, or a 300–500 kcal deficit for fat loss).`;
   }
-  if (lastUserMsg.includes("cardio") || lastUserMsg.includes("5k") || lastUserMsg.includes("run")) {
-    return `For aerobic capacity, Hunter ${name}, build your Zone 2 aerobic foundation (65–75% max HR, conversational pace). This builds mitochondrial density without draining your nervous system for heavy compound lifts. Log your Huawei Health runs to track pace and heart rate telemetry over time.`;
+
+  if (lastUserMsg.includes("creatine") || lastUserMsg.includes("supplement")) {
+    return `Hunter ${name}, creatine monohydrate is the most thoroughly researched supplement in sports science:
+• **Dosage**: Take 5 grams daily, every day, at any convenient time with water or carbs.
+• **Mechanism**: It saturates your muscle phosphocreatine stores, replenishing cellular ATP during high-intensity compound sets.
+• **Loading phase**: Not required. A flat 5g daily will fully saturate muscle tissue within 3–4 weeks. Keep your daily hydration high.`;
   }
-  return `Welcome to my Den, Hunter ${name}. I am Sung Jin Woo. We forge strength through relentless consistency—proper progressive overload on your split routines, hitting daily protein targets, and disciplined recovery. What aspect of your training shall we master today?`;
+
+  if (lastUserMsg.includes("bench") || lastUserMsg.includes("squat") || lastUserMsg.includes("deadlift") || lastUserMsg.includes("overload") || lastUserMsg.includes("plateau") || lastUserMsg.includes("weight")) {
+    return `To overcome plateaus and break through strength barriers, Hunter ${name}:
+1. **The +1 Rep Rule**: Before raising weight, ensure you can achieve the top of your rep range across all working sets with clean form.
+2. **Micro-Loading**: Add 1.25kg to 2.5kg once target volume is achieved. Small incremental loads compound into massive gains over months.
+3. **Eccentric Tempo**: Control the lowering phase for 2 to 3 seconds to maximize mechanical tension.`;
+  }
+
+  if (lastUserMsg.includes("cardio") || lastUserMsg.includes("run") || lastUserMsg.includes("endurance") || lastUserMsg.includes("huawei") || lastUserMsg.includes("treadmill")) {
+    return `For conditioning, Hunter ${name}:
+• **Zone 2 Aerobic Base**: 2–3 weekly sessions at conversational intensity (65–75% max HR). This expands capillary density and mitochondrial efficiency without impairing muscle recovery.
+• **Timing**: Perform cardio after heavy weight sessions or on separate days so maximum glycogen is available for lifting.
+• **Sync**: Log your distance, pace, and active burn to claim bonus Hunter EXP in your daily quests.`;
+  }
+
+  if (lastUserMsg.includes("rest") || lastUserMsg.includes("sore") || lastUserMsg.includes("sleep") || lastUserMsg.includes("recover")) {
+    return `Muscle is stimulated in the dungeon, but forged during recovery, Hunter ${name}:
+• **Sleep**: Prioritize 7 to 9 hours of uninterrupted sleep. Growth hormone secretion peaks during deep slow-wave sleep.
+• **Rest Days**: Schedule at least 1–2 complete rest or active recovery days weekly.
+• **Hydration**: Drink 3–4 liters of water daily with electrolytes to keep muscle cells hydrated and primed for contraction.`;
+  }
+
+  if (lastUserMsg.includes("cut") || lastUserMsg.includes("bulk") || lastUserMsg.includes("fat") || lastUserMsg.includes("weight loss")) {
+    return `Hunter ${name}, calibrate your nutrition according to your primary directive:
+• **Fat Loss (Cutting)**: 300–500 kcal deficit below maintenance. Maintain high protein (${hunterContext?.proteinGoal || 180}g) and keep lifting heavy to preserve lean mass.
+• **Hypertrophy (Lean Bulk)**: 200–300 kcal surplus above maintenance. Provides the anabolic energy needed to build new contractile tissue with minimal fat gain.
+Track your daily intake in the Food Scanner and adjust weekly based on your scale trend.`;
+  }
+
+  return `Greetings Hunter ${name}. I am Sung Jin Woo. As your coach, I am here to guide your training, split design, progressive overload, and nutrition protocols. What specific question or exercise shall we review today?`;
 }
+
 
