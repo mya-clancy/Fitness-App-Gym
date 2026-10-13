@@ -40,9 +40,11 @@ export const FitnessAiChatModal: React.FC<{
     {
       id: 'welcome',
       role: 'assistant',
-      content: `Greetings Hunter ${profile.displayName}. I am your **January AI Fitness & Nutrition Coach**. 
+      content: `Greetings Hunter ${profile.displayName}. You have entered my Den. I am **Sung Jin Woo**.
 
-Ask me anything regarding resistance training splits, progressive overload, macronutrient partition, cardio pacing, or metabolic recovery. How can I optimize your protocol today?`,
+As the Shadow Monarch and your master conditioning coach, I will forge your training protocol. Ask me anything regarding resistance splits, progressive overload, macronutrient partition, cardio pacing, or metabolic recovery. 
+
+How shall we push past your limits today?`,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     },
   ]);
@@ -126,20 +128,20 @@ Ask me anything regarding resistance training splits, progressive overload, macr
         {/* Header */}
         <div className="p-4 border-b border-cyan-500/20 bg-slate-950/80 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-700 flex items-center justify-center text-black border border-cyan-300 shadow-[0_0_15px_rgba(6,182,212,0.5)]">
-              <Sparkles className="w-5 h-5 fill-black" />
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-900 via-cyan-600 to-blue-700 flex items-center justify-center text-white border border-cyan-300 shadow-[0_0_20px_rgba(6,182,212,0.6)]">
+              <Zap className="w-5 h-5 text-cyan-200 fill-cyan-400" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-base font-extrabold text-white font-heading">
-                  JANUARY AI FITNESS COACH
+                <h3 className="text-base font-extrabold text-white font-heading tracking-wide">
+                  SUNG JIN WOO'S DEN
                 </h3>
                 <span className="text-[10px] font-mono uppercase bg-cyan-950 text-cyan-300 border border-cyan-500/40 px-2 py-0.5 rounded font-bold">
-                  ACTIVE
+                  COACH: SUNG JIN WOO
                 </span>
               </div>
               <p className="text-[11px] font-mono text-cyan-400/80">
-                Evidence-Based Hypertrophy, Aerobic Telemetry & Nutrition
+                Shadow Monarch Mastery // Hypertrophy, Aerobics & Nutrition
               </p>
             </div>
           </div>

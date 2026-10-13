@@ -24,6 +24,7 @@ import {
   Utensils,
   Flame,
   MessageSquare,
+  Zap,
 } from 'lucide-react';
 
 const MainDashboard: React.FC<{
@@ -164,14 +165,15 @@ export default function App() {
           {activeTab === 'stats' && <HunterStatusView />}
         </main>
 
-        {/* Floating AI Coach Trigger Button */}
+        {/* Floating Coach Trigger Button */}
         <button
           onClick={() => setAiChatOpen(true)}
-          className="fixed bottom-16 md:bottom-6 right-4 sm:right-6 z-40 bg-gradient-to-r from-cyan-400 via-blue-500 to-cyan-400 hover:from-cyan-300 hover:to-blue-400 text-black font-extrabold px-3.5 py-2.5 rounded-full shadow-[0_0_25px_rgba(6,182,212,0.6)] flex items-center gap-2 font-heading text-xs cursor-pointer border border-cyan-300 transition-all hover:scale-105 active:scale-95"
+          className="fixed bottom-16 md:bottom-6 right-4 sm:right-6 z-40 bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-500 hover:from-cyan-300 hover:to-blue-400 text-black font-extrabold px-4 py-2.5 rounded-full shadow-[0_0_25px_rgba(6,182,212,0.6)] flex items-center gap-2 font-heading text-xs cursor-pointer border border-cyan-300 transition-all hover:scale-105 active:scale-95"
+          title="Coach: Sung Jin Woo"
         >
-          <Sparkles className="w-4 h-4 fill-black" />
-          <span className="hidden sm:inline">JANUARY AI COACH</span>
-          <span className="sm:hidden font-mono font-bold">AI COACH</span>
+          <Zap className="w-4 h-4 fill-black" />
+          <span className="hidden sm:inline">SUNG JIN WOO'S DEN</span>
+          <span className="sm:hidden font-mono font-bold">COACH JIN WOO</span>
         </button>
 
         {/* Global Modals */}

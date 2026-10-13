@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useHunter } from '../../context/HunterContext';
 import { getRankBadgeColors } from '../../utils/gamification';
 import {
@@ -10,6 +10,9 @@ import {
   Lock,
   ChevronRight,
   TrendingUp,
+  RotateCcw,
+  AlertTriangle,
+  X,
 } from 'lucide-react';
 
 const RANK_LADDER = [
@@ -24,8 +27,17 @@ const RANK_LADDER = [
 ];
 
 export const HunterStatusView: React.FC = () => {
-  const { profile, dailyLog, workoutSplits } = useHunter();
+  const { profile, dailyLog, workoutSplits, resetAllData } = useHunter();
   const rankColors = getRankBadgeColors(profile.hunterRank);
+  const [showResetConfirm, setShowResetConfirm] = useState<boolean>(false);
+  const [resetSuccess, setResetSuccess] = useState<boolean>(false);
+
+  const handleReset = async () => {
+    await resetAllData();
+    setShowResetConfirm(false);
+    setResetSuccess(true);
+    setTimeout(() => setResetSuccess(false), 3000);
+  };
 
   return (
     <div className="space-y-6">
@@ -174,6 +186,85 @@ export const HunterStatusView: React.FC = () => {
           })}
         </div>
       </div>
+
+      {/* Hunter System Reboot / Fresh Start Card */}
+      <div className="rounded-2xl glass-panel p-6 border border-red-500/30 bg-red-950/10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2 text-red-400 mb-1">
+            <AlertTriangle className="w-5 h-5 text-red-400" />
+            <h4 className="text-base font-extrabold text-white font-heading">
+              HUNTER SYSTEM REBOOT // FRESH START
+            </h4>
+          </div>
+          <p className="text-xs font-mono text-slate-400">
+            Wipe all logged meals, cardio telemetries, and completed exercise records to reset your status back to Level 1 (0 EXP).
+          </p>
+        </div>
+
+        <button
+          onClick={() => setShowResetConfirm(true)}
+          className="px-5 py-2.5 rounded-xl text-xs font-mono font-bold bg-red-600/80 hover:bg-red-600 text-white shadow-[0_0_15px_rgba(239,68,68,0.4)] transition-all flex items-center gap-2 cursor-pointer shrink-0 self-start sm:self-auto"
+        >
+          <RotateCcw className="w-4 h-4" />
+          <span>RESET ALL DATA</span>
+        </button>
+      </div>
+
+      {/* Reboot Confirm Modal */}
+      {showResetConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="relative w-full max-w-md rounded-2xl glass-panel-glow border-2 border-red-500/50 p-6 shadow-[0_0_40px_rgba(239,68,68,0.35)] bg-slate-950">
+            <div className="flex items-center justify-between pb-3 border-b border-red-500/20 mb-4">
+              <div className="flex items-center gap-2.5 text-red-400">
+                <AlertTriangle className="w-5 h-5" />
+                <h3 className="text-base font-extrabold text-white font-heading tracking-wide">
+                  INITIALIZE FRESH START
+                </h3>
+              </div>
+              <button
+                onClick={() => setShowResetConfirm(false)}
+                className="p-1 rounded text-slate-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs font-mono text-slate-300 mb-4 leading-relaxed">
+              Confirm deletion of all current logs?
+              <br /><br />
+              This will reset your profile back to <strong className="text-cyan-300">Level 1 (0 EXP)</strong> and clear all meal records, cardio entries, and completed workout checkmarks.
+            </p>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowResetConfirm(false)}
+                className="px-4 py-2 rounded-xl text-xs font-mono text-slate-400 hover:text-white border border-slate-800"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleReset}
+                className="px-5 py-2 rounded-xl text-xs font-mono font-extrabold bg-red-600 hover:bg-red-500 text-white shadow-[0_0_15px_rgba(239,68,68,0.5)] transition-all cursor-pointer flex items-center gap-1.5"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>CONFIRM RESET</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Success Notification */}
+      {resetSuccess && (
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 pointer-events-none transition-all duration-300 animate-in fade-in">
+          <div className="bg-emerald-950/95 border-2 border-emerald-400 text-emerald-300 px-5 py-2.5 rounded-xl shadow-[0_0_25px_rgba(16,185,129,0.7)] text-xs font-mono font-bold flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+            FRESH START INITIALIZED // SYSTEM RESET TO LEVEL 1 (0 EXP)
+          </div>
+        </div>
+      )}
     </div>
   );
 };

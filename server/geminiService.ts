@@ -249,7 +249,7 @@ export interface ChatMessage {
 }
 
 /**
- * Fitness Buddy & January AI interactive coach chat
+ * Sung Jin Woo's Den - Master Conditioning & Nutrition Coach
  */
 export async function chatWithFitnessAi(
   messages: ChatMessage[],
@@ -287,14 +287,13 @@ export async function chatWithFitnessAi(
         model: "gemini-3.8-flash",
         contents: formattedContents,
         config: {
-          systemInstruction: `You are the January AI Coach & Senior Sports Conditioning Dietitian on Fitness Buddy.
+          systemInstruction: `You are Sung Jin Woo, the Shadow Monarch and Master Strength & Conditioning Coach at "Sung Jin Woo's Den" in the Fitness Buddy app.
 ${contextNote}
-You answer questions on:
-1. Exercise programming, progressive overload, sets/reps, hypertrophy, and strength training.
-2. Nutrition, macros (protein, carbs, fats), portion sizing, meal timing, and metabolic energy balance.
-3. Aerobic cardio (5K, 10K, HIIT, Huawei Health telemetry, cadence, heart rate pacing).
-4. Recovery, sleep, deload cycles, and injury prevention.
-Tone: Knowledgeable, encouraging, concise, highly practical, grounded in exercise science, with a subtle cyberpunk hunter motif. Keep answers focused and actionable without excessive fluff.`,
+Persona & Voice:
+- You are Sung Jin Woo: calm, composed, observant, encouraging, and deeply disciplined. You embody the relentless work ethic of the Shadow Monarch.
+- You are an expert scientific sports dietitian and strength coach.
+- Your advice is grounded in exercise physiology: progressive overload (micro-loading, +1 rep rule, tempo, RPE), optimal protein intake (1.6–2.2g/kg bodyweight), calorie energy balance, Zone 2 aerobic endurance (Huawei Health telemetry), and metabolic recovery.
+- Maintain your identity as Coach Sung Jin Woo at all times. Address the user respectfully as Hunter or ${hunterContext?.playerName || "Jon"}. Keep answers punchy, actionable, and inspiring without unnecessary filler.`,
         },
       });
 
@@ -306,16 +305,18 @@ Tone: Knowledgeable, encouraging, concise, highly practical, grounded in exercis
     }
   }
 
-  // Fallback intelligent coaching response
+  // Fallback intelligent coaching response from Sung Jin Woo
   const lastUserMsg = messages[messages.length - 1]?.content.toLowerCase() || "";
+  const name = hunterContext?.playerName || "Jon";
   if (lastUserMsg.includes("protein")) {
-    return "For optimal muscle protein synthesis (MPS) during resistance training, aim for 1.6 to 2.2 grams of protein per kilogram of body weight (approx. 0.8–1.0g per pound). Distribute this across 3–4 meals with at least 30–40g of high-leucine protein per feeding.";
+    return `Hunter ${name}, in my training experience, protein is your fundamental building block. For muscle hypertrophy, target 1.6 to 2.2 grams per kilogram of body weight. Distribute this across 3–4 meals with 30–40g of high-quality protein per feeding to maintain consistent muscle protein synthesis.`;
   }
-  if (lastUserMsg.includes("bench") || lastUserMsg.includes("plateau") || lastUserMsg.includes("squat")) {
-    return "To break through a strength plateau, apply the Progressive Overload principle: 1) Micro-load with smaller 1.25kg plates, 2) Add 1 rep per set before increasing weight, or 3) Introduce a 3-second eccentric pause phase to build tendon stiffness and neuromuscular recruitment.";
+  if (lastUserMsg.includes("bench") || lastUserMsg.includes("plateau") || lastUserMsg.includes("squat") || lastUserMsg.includes("overload")) {
+    return `To break past any barrier, Hunter ${name}, apply progressive overload systematically: 1) Add 1 rep to your top sets before raising load, 2) Micro-load with 1.25kg increments, or 3) Enforce a 3-second eccentric tempo. The system only rewards those who consistently push beyond their prior limits.`;
   }
   if (lastUserMsg.includes("cardio") || lastUserMsg.includes("5k") || lastUserMsg.includes("run")) {
-    return "For aerobic endurance without sacrificing muscle mass, maintain Zone 2 pacing (where you can speak in complete sentences without gasping, ~65-75% max HR). Log your Huawei Health runs consistently to track your pace curve over time!";
+    return `For aerobic capacity, Hunter ${name}, build your Zone 2 aerobic foundation (65–75% max HR, conversational pace). This builds mitochondrial density without draining your nervous system for heavy compound lifts. Log your Huawei Health runs to track pace and heart rate telemetry over time.`;
   }
-  return "As your January AI Fitness Coach, I recommend balancing progressive overload in your split routines with 2.0g/kg protein intake and proper hydration. What specific fitness, nutrition, or cardio goal are you targeting today?";
+  return `Welcome to my Den, Hunter ${name}. I am Sung Jin Woo. We forge strength through relentless consistency—proper progressive overload on your split routines, hitting daily protein targets, and disciplined recovery. What aspect of your training shall we master today?`;
 }
+

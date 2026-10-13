@@ -15,6 +15,8 @@ import {
   CardioLog,
   WorkoutSplit,
   DailyLogData,
+  ExerciseItem,
+  WorkoutDay,
 } from '../types/hunter';
 import {
   calculateLevelData,
@@ -47,6 +49,11 @@ interface HunterContextType {
     split: Omit<WorkoutSplit, 'splitId' | 'userId' | 'createdAt' | 'updatedAt'>
   ) => Promise<void>;
   deleteWorkoutSplit: (splitId: string) => Promise<void>;
+  deleteDayFromSplit: (splitId: string, dayId: string) => Promise<void>;
+  deleteExerciseFromSplit: (splitId: string, dayId: string, exerciseId: string) => Promise<void>;
+  addExerciseToDay: (splitId: string, dayId: string, exercise: ExerciseItem) => Promise<void>;
+  addDayToSplit: (splitId: string, dayName: string, targetFocus?: string) => Promise<void>;
+  resetAllData: () => Promise<void>;
   setActiveSplit: (splitId: string) => void;
   updateMacroGoals: (goals: {
     calorieGoal: number;
@@ -266,7 +273,24 @@ export const HunterProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   });
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
 
-  // Profile state - clean starting slate
+  // Automatic one-time fresh start wipe requested by user
+  try {
+    if (typeof window !== 'undefined' && !localStorage.getItem('hunter_fresh_reset_v4')) {
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith('hunter_')) {
+          keysToRemove.push(k);
+        }
+      }
+      keysToRemove.forEach((k) => localStorage.removeItem(k));
+      localStorage.setItem('hunter_fresh_reset_v4', 'true');
+    }
+  } catch {
+    // fallback
+  }
+
+  // Profile state - clean starting slate (Level 1, 0 XP, Jon)
   const [profile, setProfile] = useState<HunterProfile>(() => {
     const saved = localStorage.getItem('hunter_profile');
     if (saved) {
@@ -275,16 +299,15 @@ export const HunterProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         if (!parsed.displayName || parsed.displayName.includes('Sung Jin-Woo')) {
           parsed.displayName = 'Jon';
         }
-        // If it was the initial sample 320 XP, reset to 0 for fresh user
-        const totalXp = parsed.totalXp === 320 ? 0 : (parsed.totalXp || 0);
+        const totalXp = parsed.totalXp || 0;
         const levelData = calculateLevelData(totalXp);
-        return { ...parsed, ...levelData, totalXp };
+        return { ...parsed, ...levelData, totalXp, displayName: parsed.displayName || 'Jon' };
       } catch {
         // fallback
       }
     }
     const levelData = calculateLevelData(0);
-    return { ...defaultInitialProfile, ...levelData };
+    return { ...defaultInitialProfile, ...levelData, displayName: 'Jon', totalXp: 0 };
   });
 
   // Daily log state - clean starting slate
@@ -788,6 +811,222 @@ export const HunterProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     [workoutSplits, activeSplitId, user]
   );
 
+  // Delete a specific Day from a Split routine
+  const deleteDayFromSplit = useCallback(
+    async (splitId: string, dayId: string) => {
+      const updatedSplits = workoutSplits.map((s) => {
+        if (s.splitId !== splitId) return s;
+        const filteredDays = s.days.filter((d) => d.id !== dayId);
+        return {
+          ...s,
+          days: filteredDays,
+          updatedAt: new Date().toISOString(),
+        };
+      });
+
+      setWorkoutSplits(updatedSplits);
+
+      // Clean up completed exercises recorded today for this deleted day
+      setDailyLog((prev) => ({
+        ...prev,
+        completedExercisesToday: prev.completedExercisesToday.filter(
+          (c) => !(c.splitId === splitId && c.dayId === dayId)
+        ),
+        updatedAt: new Date().toISOString(),
+      }));
+
+      sound.play('click');
+
+      if (user) {
+        const splitDocRef = doc(db, 'users', user.uid, 'workoutSplits', splitId);
+        const target = updatedSplits.find((s) => s.splitId === splitId);
+        if (target) {
+          await setDoc(splitDocRef, target, { merge: true }).catch((err) => {
+            handleFirestoreError(err, OperationType.UPDATE, `users/${user.uid}/workoutSplits/${splitId}`);
+          });
+        }
+      }
+    },
+    [workoutSplits, user]
+  );
+
+  // Delete an individual Exercise (Workout) from a Day in a Split
+  const deleteExerciseFromSplit = useCallback(
+    async (splitId: string, dayId: string, exerciseId: string) => {
+      const updatedSplits = workoutSplits.map((s) => {
+        if (s.splitId !== splitId) return s;
+        const updatedDays = s.days.map((d) => {
+          if (d.id !== dayId) return d;
+          return {
+            ...d,
+            exercises: d.exercises.filter((ex) => ex.id !== exerciseId),
+          };
+        });
+        return {
+          ...s,
+          days: updatedDays,
+          updatedAt: new Date().toISOString(),
+        };
+      });
+
+      setWorkoutSplits(updatedSplits);
+
+      // Remove completion status if this exercise was checked off today
+      setDailyLog((prev) => ({
+        ...prev,
+        completedExercisesToday: prev.completedExercisesToday.filter(
+          (c) => !(c.splitId === splitId && c.dayId === dayId && c.exerciseId === exerciseId)
+        ),
+        updatedAt: new Date().toISOString(),
+      }));
+
+      sound.play('click');
+
+      if (user) {
+        const splitDocRef = doc(db, 'users', user.uid, 'workoutSplits', splitId);
+        const target = updatedSplits.find((s) => s.splitId === splitId);
+        if (target) {
+          await setDoc(splitDocRef, target, { merge: true }).catch((err) => {
+            handleFirestoreError(err, OperationType.UPDATE, `users/${user.uid}/workoutSplits/${splitId}`);
+          });
+        }
+      }
+    },
+    [workoutSplits, user]
+  );
+
+  // Add an individual Exercise to a Day
+  const addExerciseToDay = useCallback(
+    async (splitId: string, dayId: string, exercise: ExerciseItem) => {
+      const updatedSplits = workoutSplits.map((s) => {
+        if (s.splitId !== splitId) return s;
+        const updatedDays = s.days.map((d) => {
+          if (d.id !== dayId) return d;
+          return {
+            ...d,
+            exercises: [...d.exercises, exercise],
+          };
+        });
+        return {
+          ...s,
+          days: updatedDays,
+          updatedAt: new Date().toISOString(),
+        };
+      });
+
+      setWorkoutSplits(updatedSplits);
+      awardXp(50, `Added Exercise: ${exercise.name}`);
+
+      if (user) {
+        const splitDocRef = doc(db, 'users', user.uid, 'workoutSplits', splitId);
+        const target = updatedSplits.find((s) => s.splitId === splitId);
+        if (target) {
+          await setDoc(splitDocRef, target, { merge: true }).catch((err) => {
+            handleFirestoreError(err, OperationType.UPDATE, `users/${user.uid}/workoutSplits/${splitId}`);
+          });
+        }
+      }
+    },
+    [workoutSplits, user, awardXp]
+  );
+
+  // Add a Day to a Split
+  const addDayToSplit = useCallback(
+    async (splitId: string, dayName: string, targetFocus: string = 'General Conditioning') => {
+      const newDay: WorkoutDay = {
+        id: 'day_' + Date.now(),
+        dayName,
+        targetFocus,
+        exercises: [],
+      };
+
+      const updatedSplits = workoutSplits.map((s) => {
+        if (s.splitId !== splitId) return s;
+        return {
+          ...s,
+          days: [...s.days, newDay],
+          updatedAt: new Date().toISOString(),
+        };
+      });
+
+      setWorkoutSplits(updatedSplits);
+      sound.play('click');
+
+      if (user) {
+        const splitDocRef = doc(db, 'users', user.uid, 'workoutSplits', splitId);
+        const target = updatedSplits.find((s) => s.splitId === splitId);
+        if (target) {
+          await setDoc(splitDocRef, target, { merge: true }).catch((err) => {
+            handleFirestoreError(err, OperationType.UPDATE, `users/${user.uid}/workoutSplits/${splitId}`);
+          });
+        }
+      }
+    },
+    [workoutSplits, user]
+  );
+
+  // Full System Reset / Fresh Start
+  const resetAllData = useCallback(async () => {
+    try {
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith('hunter_')) {
+          keysToRemove.push(k);
+        }
+      }
+      keysToRemove.forEach((k) => localStorage.removeItem(k));
+      localStorage.setItem('hunter_fresh_v4', 'true');
+    } catch (e) {
+      console.warn('LocalStorage reset error', e);
+    }
+
+    // Reset profile to pristine Level 1 with 0 XP
+    const cleanLevelData = calculateLevelData(0);
+    const freshProfile: HunterProfile = {
+      ...defaultInitialProfile,
+      ...cleanLevelData,
+      displayName: user?.displayName || 'Jon',
+      userId: user ? user.uid : 'local-hunter',
+      totalXp: 0,
+      currentLevelXp: 0,
+      level: 1,
+      stats: defaultHunterStats,
+      streakDays: 1,
+      updatedAt: new Date().toISOString(),
+    };
+    setProfile(freshProfile);
+
+    // Reset Daily Log to empty
+    const today = new Date().toISOString().split('T')[0];
+    const freshDailyLog: DailyLogData = {
+      date: today,
+      userId: user ? user.uid : 'local-hunter',
+      meals: [],
+      cardio: [],
+      completedExercisesToday: [],
+      updatedAt: new Date().toISOString(),
+    };
+    setDailyLog(freshDailyLog);
+
+    // Reset Splits to clean default routine
+    setWorkoutSplits(initialDefaultSplits);
+    setActiveSplitId('shadow-ppl-split');
+
+    if (user) {
+      const userDocRef = doc(db, 'users', user.uid);
+      await setDoc(userDocRef, freshProfile).catch((err) => {
+        handleFirestoreError(err, OperationType.WRITE, `users/${user.uid}`);
+      });
+      const logDocRef = doc(db, 'users', user.uid, 'dailyLogs', today);
+      await setDoc(logDocRef, freshDailyLog).catch((err) => {
+        handleFirestoreError(err, OperationType.WRITE, `users/${user.uid}/dailyLogs/${today}`);
+      });
+    }
+
+    sound.play('quest_complete');
+  }, [user]);
+
   const setActiveSplit = useCallback((splitId: string) => {
     setActiveSplitId(splitId);
   }, []);
@@ -837,6 +1076,11 @@ export const HunterProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       toggleExerciseCompletion,
       addWorkoutSplit,
       deleteWorkoutSplit,
+      deleteDayFromSplit,
+      deleteExerciseFromSplit,
+      addExerciseToDay,
+      addDayToSplit,
+      resetAllData,
       setActiveSplit,
       updateMacroGoals,
       levelUpModalData,
@@ -853,6 +1097,7 @@ export const HunterProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       workoutSplits,
       activeSplitId,
       selectedDate,
+      setSelectedDate,
       addMeal,
       deleteMeal,
       addCardio,
@@ -860,6 +1105,11 @@ export const HunterProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       toggleExerciseCompletion,
       addWorkoutSplit,
       deleteWorkoutSplit,
+      deleteDayFromSplit,
+      deleteExerciseFromSplit,
+      addExerciseToDay,
+      addDayToSplit,
+      resetAllData,
       setActiveSplit,
       updateMacroGoals,
       levelUpModalData,

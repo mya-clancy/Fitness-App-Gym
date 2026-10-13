@@ -249,9 +249,11 @@ export const SplitBuilder: React.FC<SplitBuilderProps> = ({ isOpen, onClose }) =
                       <button
                         type="button"
                         onClick={() => handleRemoveDay(day.id)}
-                        className="p-1 rounded text-slate-500 hover:text-red-400"
+                        className="px-2 py-1 rounded text-red-400 hover:text-red-300 bg-red-950/40 border border-red-500/30 text-[11px] font-mono flex items-center gap-1 cursor-pointer"
+                        title="Delete Day Split"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline">DELETE DAY SPLIT</span>
                       </button>
                     )}
                   </div>
@@ -284,16 +286,18 @@ export const SplitBuilder: React.FC<SplitBuilderProps> = ({ isOpen, onClose }) =
                               </div>
                             </div>
 
-                            <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-2.5">
                               <span className="bg-cyan-950 text-cyan-300 font-extrabold px-2 py-0.5 rounded border border-cyan-500/40 text-[11px]">
                                 +{ex.xpValue} EXP
                               </span>
                               <button
                                 type="button"
                                 onClick={() => handleRemoveExercise(day.id, ex.id)}
-                                className="text-slate-500 hover:text-red-400 p-1"
+                                className="px-2 py-1 rounded text-red-400 hover:text-red-300 bg-red-950/30 border border-red-500/30 text-[11px] font-mono flex items-center gap-1 cursor-pointer"
+                                title="Delete Workout"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
+                                <span className="hidden sm:inline">DELETE WORKOUT</span>
                               </button>
                             </div>
                           </div>
