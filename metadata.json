@@ -1,0 +1,6 @@
+{
+  "name": "Solo Leveling Nutrition & Hunter Quest Tracker",
+  "description": "Gamified Solo Leveling fitness and nutrition tracking system with AI Gemini food scanner, cardio logging, and custom workout split progression.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

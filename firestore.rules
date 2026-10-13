@@ -1,0 +1,99 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net: Default-deny all undefined paths
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Validation helper for UserProfile
+    function isValidUserProfile(data, userId) {
+      return data.userId == userId
+        && data.level is number && data.level >= 1 && data.level <= 1000
+        && data.totalXp is number && data.totalXp >= 0
+        && data.calorieGoal is number && data.calorieGoal >= 0 && data.calorieGoal <= 20000
+        && data.proteinGoal is number && data.proteinGoal >= 0 && data.proteinGoal <= 1000
+        && data.carbsGoal is number && data.carbsGoal >= 0 && data.carbsGoal <= 2000
+        && data.fatGoal is number && data.fatGoal >= 0 && data.fatGoal <= 1000;
+    }
+
+    // Validation helper for DailyLog
+    function isValidDailyLog(data, userId, date) {
+      return data.userId == userId
+        && data.date == date
+        && data.meals is list && data.meals.size() <= 100
+        && data.cardio is list && data.cardio.size() <= 50;
+    }
+
+    // Validation helper for WorkoutSplit
+    function isValidWorkoutSplit(data, userId, splitId) {
+      return data.userId == userId
+        && data.splitId == splitId
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 100
+        && data.days is list && data.days.size() <= 30;
+    }
+
+    // Connection test rule (used during boot validation)
+    match /test/connection {
+      allow read: if true;
+    }
+
+    // User profile documents: /users/{userId}
+    match /users/{userId} {
+      allow get: if isOwner(userId) && isValidId(userId);
+      allow list: if false; // Deny broad collection scanning
+      allow create: if isOwner(userId) && isValidId(userId) && isValidUserProfile(incoming(), userId);
+      allow update: if isOwner(userId) && isValidId(userId) && isValidUserProfile(incoming(), userId)
+                    && incoming().userId == existing().userId;
+      allow delete: if isOwner(userId) && isValidId(userId);
+
+      // Sub-collection: /users/{userId}/dailyLogs/{date}
+      match /dailyLogs/{date} {
+        allow get: if isOwner(userId) && isValidId(userId) && isValidId(date);
+        allow list: if isOwner(userId) && isValidId(userId);
+        allow create: if isOwner(userId) && isValidId(userId) && isValidId(date)
+                      && isValidDailyLog(incoming(), userId, date);
+        allow update: if isOwner(userId) && isValidId(userId) && isValidId(date)
+                      && isValidDailyLog(incoming(), userId, date)
+                      && incoming().userId == existing().userId
+                      && incoming().date == existing().date;
+        allow delete: if isOwner(userId) && isValidId(userId) && isValidId(date);
+      }
+
+      // Sub-collection: /users/{userId}/workoutSplits/{splitId}
+      match /workoutSplits/{splitId} {
+        allow get: if isOwner(userId) && isValidId(userId) && isValidId(splitId);
+        allow list: if isOwner(userId) && isValidId(userId);
+        allow create: if isOwner(userId) && isValidId(userId) && isValidId(splitId)
+                      && isValidWorkoutSplit(incoming(), userId, splitId);
+        allow update: if isOwner(userId) && isValidId(userId) && isValidId(splitId)
+                      && isValidWorkoutSplit(incoming(), userId, splitId)
+                      && incoming().userId == existing().userId
+                      && incoming().splitId == existing().splitId;
+        allow delete: if isOwner(userId) && isValidId(userId) && isValidId(splitId);
+      }
+    }
+  }
+}

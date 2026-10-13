@@ -1,0 +1,881 @@
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
+import { onAuthStateChanged, User } from 'firebase/auth';
+import {
+  doc,
+  setDoc,
+  collection,
+  onSnapshot,
+  deleteDoc,
+  Unsubscribe,
+} from 'firebase/firestore';
+import { auth, db, handleFirestoreError, OperationType } from '../config/firebase';
+import {
+  HunterProfile,
+  MealItem,
+  CardioLog,
+  WorkoutSplit,
+  DailyLogData,
+} from '../types/hunter';
+import {
+  calculateLevelData,
+  triggerLevelUpConfetti,
+  sound,
+} from '../utils/gamification';
+
+interface HunterContextType {
+  user: User | null;
+  authLoading: boolean;
+  profile: HunterProfile;
+  dailyLog: DailyLogData;
+  workoutSplits: WorkoutSplit[];
+  activeSplitId: string | null;
+  selectedDate: string;
+  setSelectedDate: (date: string) => void;
+  // Actions
+  addMeal: (meal: Omit<MealItem, 'id' | 'timestamp'>) => Promise<void>;
+  deleteMeal: (mealId: string) => Promise<void>;
+  addCardio: (cardio: Omit<CardioLog, 'id' | 'timestamp' | 'xpAwarded'>) => Promise<void>;
+  deleteCardio: (cardioId: string) => Promise<void>;
+  toggleExerciseCompletion: (
+    splitId: string,
+    dayId: string,
+    exerciseId: string,
+    xpValue: number,
+    exerciseName: string
+  ) => Promise<void>;
+  addWorkoutSplit: (
+    split: Omit<WorkoutSplit, 'splitId' | 'userId' | 'createdAt' | 'updatedAt'>
+  ) => Promise<void>;
+  deleteWorkoutSplit: (splitId: string) => Promise<void>;
+  setActiveSplit: (splitId: string) => void;
+  updateMacroGoals: (goals: {
+    calorieGoal: number;
+    proteinGoal: number;
+    carbsGoal: number;
+    fatGoal: number;
+  }) => Promise<void>;
+  // Gamification UI
+  levelUpModalData: {
+    isOpen: boolean;
+    oldLevel: number;
+    newLevel: number;
+    rank: string;
+    unlockedPerk?: string;
+  } | null;
+  closeLevelUpModal: () => void;
+  soundEnabled: boolean;
+  setSoundEnabled: (enabled: boolean) => void;
+  recentXpNotification: { xp: number; reason: string } | null;
+}
+
+const defaultHunterStats = {
+  strength: 10,
+  agility: 10,
+  endurance: 10,
+  vitality: 10,
+  discipline: 1,
+};
+
+const defaultInitialProfile: HunterProfile = {
+  userId: 'local-hunter',
+  displayName: 'Jon',
+  hunterTitle: 'E-Rank Dungeon Scout',
+  level: 1,
+  totalXp: 0,
+  currentLevelXp: 0,
+  xpToNextLevel: 1000,
+  progressPercent: 0,
+  hunterRank: 'E-Rank',
+  stats: defaultHunterStats,
+  streakDays: 1,
+  lastActiveDate: new Date().toISOString().split('T')[0],
+  calorieGoal: 2500,
+  proteinGoal: 180,
+  carbsGoal: 260,
+  fatGoal: 70,
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+};
+
+// Initial default science-based Solo Leveling routine
+const initialDefaultSplits: WorkoutSplit[] = [
+  {
+    splitId: 'shadow-ppl-split',
+    userId: 'local-hunter',
+    name: 'Shadow Monarch 3-Day Hypertrophy Split',
+    description: 'Science-grounded push-pull-legs architecture with Progressive Overload XP ratings.',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    isActive: true,
+    days: [
+      {
+        id: 'day-1-push',
+        dayName: 'Day 1: Power Push (Chest, Shoulders & Triceps)',
+        targetFocus: 'Anterior Chain Hypertrophy',
+        exercises: [
+          {
+            id: 'ex-barbell-bench',
+            name: 'Barbell Flat Bench Press',
+            targetMuscle: 'Chest',
+            sets: 4,
+            reps: 8,
+            weightKg: 85,
+            xpValue: 350,
+            progressiveOverloadTip: 'Add 2.5kg or push for 9 reps once RPE drops below 8.',
+          },
+          {
+            id: 'ex-incline-db',
+            name: 'Incline Dumbbell Press (30°)',
+            targetMuscle: 'Upper Chest',
+            sets: 3,
+            reps: 10,
+            weightKg: 30,
+            xpValue: 300,
+            progressiveOverloadTip: 'Control the 3-second eccentric stretch at the bottom.',
+          },
+          {
+            id: 'ex-cable-lateral',
+            name: 'Behind-the-Back Cable Lateral Raise',
+            targetMuscle: 'Lateral Deltoids',
+            sets: 4,
+            reps: 15,
+            weightKg: 12,
+            xpValue: 220,
+            progressiveOverloadTip: 'Peak contraction hold at 90 degrees.',
+          },
+          {
+            id: 'ex-tricep-pushdown',
+            name: 'Rope Triceps Pushdown',
+            targetMuscle: 'Triceps',
+            sets: 3,
+            reps: 12,
+            weightKg: 35,
+            xpValue: 200,
+            progressiveOverloadTip: 'Spread rope apart at full lockout.',
+          },
+        ],
+      },
+      {
+        id: 'day-2-pull',
+        dayName: 'Day 2: Shadow Pull (Lats, Upper Back & Biceps)',
+        targetFocus: 'Posterior Lat Width & Thickness',
+        exercises: [
+          {
+            id: 'ex-weighted-pullups',
+            name: 'Weighted Pull-Ups',
+            targetMuscle: 'Lats',
+            sets: 4,
+            reps: 6,
+            weightKg: 15,
+            xpValue: 400,
+            progressiveOverloadTip: 'Chest to bar with zero kipping momentum.',
+          },
+          {
+            id: 'ex-chest-supported-row',
+            name: 'Chest-Supported T-Bar Row',
+            targetMuscle: 'Mid-Back / Rhomboids',
+            sets: 4,
+            reps: 10,
+            weightKg: 65,
+            xpValue: 320,
+            progressiveOverloadTip: 'Full protraction at start, hard scapular retraction.',
+          },
+          {
+            id: 'ex-face-pulls',
+            name: 'Cable Face Pulls with External Rotation',
+            targetMuscle: 'Rear Delts & Rotator Cuff',
+            sets: 3,
+            reps: 15,
+            weightKg: 25,
+            xpValue: 200,
+            progressiveOverloadTip: 'Critical for shoulder longevity and posture.',
+          },
+          {
+            id: 'ex-incline-curl',
+            name: 'Incline Dumbbell Bicep Curl',
+            targetMuscle: 'Biceps Long Head',
+            sets: 3,
+            reps: 10,
+            weightKg: 16,
+            xpValue: 250,
+            progressiveOverloadTip: 'Full passive stretch behind torso.',
+          },
+        ],
+      },
+      {
+        id: 'day-3-legs',
+        dayName: 'Day 3: Monarch Legs & Core (Quads, Hamstrings & Calves)',
+        targetFocus: 'Lower Body Kinetic Force',
+        exercises: [
+          {
+            id: 'ex-barbell-squat',
+            name: 'Barbell Back Squat (High-Bar)',
+            targetMuscle: 'Quads & Glutes',
+            sets: 4,
+            reps: 6,
+            weightKg: 120,
+            xpValue: 500,
+            progressiveOverloadTip: 'Break parallel depth with controlled tempo.',
+          },
+          {
+            id: 'ex-romanian-deadlift',
+            name: 'Romanian Deadlift (RDL)',
+            targetMuscle: 'Hamstrings & Glutes',
+            sets: 3,
+            reps: 8,
+            weightKg: 105,
+            xpValue: 420,
+            progressiveOverloadTip: 'Hinge back until deep hamstring stretch before firing glutes.',
+          },
+          {
+            id: 'ex-bulgarian-split-squat',
+            name: 'Bulgarian Split Squat',
+            targetMuscle: 'Unilateral Quads',
+            sets: 3,
+            reps: 10,
+            weightKg: 24,
+            xpValue: 350,
+            progressiveOverloadTip: 'Elevate rear foot on soft pad.',
+          },
+          {
+            id: 'ex-hanging-leg-raise',
+            name: 'Hanging Leg Raises to Bar',
+            targetMuscle: 'Lower Abdominals',
+            sets: 3,
+            reps: 12,
+            weightKg: 0,
+            xpValue: 250,
+            progressiveOverloadTip: 'Tilt pelvis upward at apex of lift.',
+          },
+        ],
+      },
+    ],
+  },
+];
+
+const initialSampleMeals: MealItem[] = [];
+const initialSampleCardio: CardioLog[] = [];
+
+const HunterContext = createContext<HunterContextType | undefined>(undefined);
+
+export const HunterProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [user, setUser] = useState<User | null>(null);
+  const [authLoading, setAuthLoading] = useState<boolean>(true);
+  const [selectedDate, setSelectedDate] = useState<string>(() => {
+    return new Date().toISOString().split('T')[0];
+  });
+  const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
+
+  // Profile state - clean starting slate
+  const [profile, setProfile] = useState<HunterProfile>(() => {
+    const saved = localStorage.getItem('hunter_profile');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (!parsed.displayName || parsed.displayName.includes('Sung Jin-Woo')) {
+          parsed.displayName = 'Jon';
+        }
+        // If it was the initial sample 320 XP, reset to 0 for fresh user
+        const totalXp = parsed.totalXp === 320 ? 0 : (parsed.totalXp || 0);
+        const levelData = calculateLevelData(totalXp);
+        return { ...parsed, ...levelData, totalXp };
+      } catch {
+        // fallback
+      }
+    }
+    const levelData = calculateLevelData(0);
+    return { ...defaultInitialProfile, ...levelData };
+  });
+
+  // Daily log state - clean starting slate
+  const [dailyLog, setDailyLog] = useState<DailyLogData>(() => {
+    const today = new Date().toISOString().split('T')[0];
+    const saved = localStorage.getItem(`hunter_log_${today}`);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        // Strip out pre-logged sample entries so user has completely fresh logs
+        const meals = (parsed.meals || []).filter(
+          (m: MealItem) => !m.id.startsWith('sample-meal')
+        );
+        const cardio = (parsed.cardio || []).filter(
+          (c: CardioLog) => !c.id.startsWith('sample-cardio')
+        );
+        return {
+          ...parsed,
+          meals,
+          cardio,
+        };
+      } catch {
+        // fallback
+      }
+    }
+    return {
+      date: today,
+      userId: 'local-hunter',
+      meals: [],
+      cardio: [],
+      completedExercisesToday: [],
+      updatedAt: new Date().toISOString(),
+    };
+  });
+
+  // Workout splits state
+  const [workoutSplits, setWorkoutSplits] = useState<WorkoutSplit[]>(() => {
+    const saved = localStorage.getItem('hunter_splits');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch {
+        // fallback
+      }
+    }
+    return initialDefaultSplits;
+  });
+
+  const [activeSplitId, setActiveSplitId] = useState<string | null>('shadow-ppl-split');
+  const [levelUpModalData, setLevelUpModalData] = useState<{
+    isOpen: boolean;
+    oldLevel: number;
+    newLevel: number;
+    rank: string;
+    unlockedPerk?: string;
+  } | null>(null);
+
+  const [recentXpNotification, setRecentXpNotification] = useState<{
+    xp: number;
+    reason: string;
+  } | null>(null);
+
+  // Sync sound setting
+  useEffect(() => {
+    sound.enabled = soundEnabled;
+  }, [soundEnabled]);
+
+  // Auth observer
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setAuthLoading(false);
+      if (currentUser) {
+        setProfile((prev) => ({
+          ...prev,
+          userId: currentUser.uid,
+          displayName: currentUser.displayName || prev.displayName,
+        }));
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Save to localStorage whenever local states change
+  useEffect(() => {
+    localStorage.setItem('hunter_profile', JSON.stringify(profile));
+  }, [profile]);
+
+  useEffect(() => {
+    localStorage.setItem(`hunter_log_${dailyLog.date}`, JSON.stringify(dailyLog));
+  }, [dailyLog]);
+
+  useEffect(() => {
+    localStorage.setItem('hunter_splits', JSON.stringify(workoutSplits));
+  }, [workoutSplits]);
+
+  // Load date-specific log from local storage when not signed into an account
+  useEffect(() => {
+    if (user) return;
+    if (dailyLog.date === selectedDate) return;
+    const saved = localStorage.getItem(`hunter_log_${selectedDate}`);
+    if (saved) {
+      try {
+        setDailyLog(JSON.parse(saved));
+        return;
+      } catch {
+        // fallback
+      }
+    }
+    setDailyLog({
+      date: selectedDate,
+      userId: 'local-hunter',
+      meals: [],
+      cardio: [],
+      completedExercisesToday: [],
+      updatedAt: new Date().toISOString(),
+    });
+  }, [selectedDate, user, dailyLog.date]);
+
+  // Sync Firestore when user is authenticated
+  useEffect(() => {
+    if (!user) return;
+    const userDocRef = doc(db, 'users', user.uid);
+
+    // Snapshot listener on UserProfile
+    const unsubProfile: Unsubscribe = onSnapshot(
+      userDocRef,
+      (snapshot) => {
+        if (snapshot.exists()) {
+          const data = snapshot.data();
+          const levelData = calculateLevelData(data.totalXp ?? profile.totalXp);
+          setProfile((prev) => ({
+            ...prev,
+            ...data,
+            ...levelData,
+            userId: user.uid,
+          }));
+        } else {
+          // Initialize document in Firestore
+          const initialData = {
+            userId: user.uid,
+            displayName: user.displayName || 'Hunter',
+            level: profile.level,
+            totalXp: profile.totalXp,
+            hunterRank: profile.hunterRank,
+            calorieGoal: profile.calorieGoal,
+            proteinGoal: profile.proteinGoal,
+            carbsGoal: profile.carbsGoal,
+            fatGoal: profile.fatGoal,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          };
+          setDoc(userDocRef, initialData).catch((err) => {
+            handleFirestoreError(err, OperationType.WRITE, `users/${user.uid}`);
+          });
+        }
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.GET, `users/${user.uid}`);
+      }
+    );
+
+    // Snapshot listener on DailyLog
+    const dailyLogDocRef = doc(db, 'users', user.uid, 'dailyLogs', selectedDate);
+    const unsubDaily: Unsubscribe = onSnapshot(
+      dailyLogDocRef,
+      (snapshot) => {
+        if (snapshot.exists()) {
+          const data = snapshot.data() as DailyLogData;
+          setDailyLog(data);
+        } else {
+          // If no remote log yet for today, seed with current local state
+          const newRemoteLog: DailyLogData = {
+            date: selectedDate,
+            userId: user.uid,
+            meals: dailyLog.date === selectedDate ? dailyLog.meals : [],
+            cardio: dailyLog.date === selectedDate ? dailyLog.cardio : [],
+            completedExercisesToday: dailyLog.date === selectedDate ? dailyLog.completedExercisesToday : [],
+            updatedAt: new Date().toISOString(),
+          };
+          setDoc(dailyLogDocRef, newRemoteLog).catch((err) => {
+            handleFirestoreError(err, OperationType.WRITE, `users/${user.uid}/dailyLogs/${selectedDate}`);
+          });
+        }
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.GET, `users/${user.uid}/dailyLogs/${selectedDate}`);
+      }
+    );
+
+    // Snapshot listener on WorkoutSplits
+    const splitsColRef = collection(db, 'users', user.uid, 'workoutSplits');
+    const unsubSplits: Unsubscribe = onSnapshot(
+      splitsColRef,
+      (snapshot) => {
+        if (!snapshot.empty) {
+          const loadedSplits: WorkoutSplit[] = [];
+          snapshot.forEach((docSnap) => {
+            loadedSplits.push(docSnap.data() as WorkoutSplit);
+          });
+          setWorkoutSplits(loadedSplits);
+        } else {
+          // Seed the initial default routine to remote
+          initialDefaultSplits.forEach((split) => {
+            const splitDoc = doc(db, 'users', user.uid, 'workoutSplits', split.splitId);
+            setDoc(splitDoc, { ...split, userId: user.uid }).catch((err) => {
+              handleFirestoreError(err, OperationType.WRITE, `users/${user.uid}/workoutSplits/${split.splitId}`);
+            });
+          });
+        }
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.LIST, `users/${user.uid}/workoutSplits`);
+      }
+    );
+
+    return () => {
+      unsubProfile();
+      unsubDaily();
+      unsubSplits();
+    };
+  }, [user, selectedDate]);
+
+  // Award XP with level calculation, sound, confetti, and alert modal
+  const awardXp = useCallback(
+    (xpAmount: number, reason: string) => {
+      setRecentXpNotification({ xp: xpAmount, reason });
+      sound.play('xp_gain');
+
+      setTimeout(() => {
+        setRecentXpNotification(null);
+      }, 3500);
+
+      setProfile((prev) => {
+        const oldLevel = prev.level;
+        const newTotalXp = prev.totalXp + xpAmount;
+        const levelData = calculateLevelData(newTotalXp);
+
+        // Check if level increased
+        if (levelData.level > oldLevel) {
+          triggerLevelUpConfetti();
+          sound.play('level_up');
+          setLevelUpModalData({
+            isOpen: true,
+            oldLevel,
+            newLevel: levelData.level,
+            rank: levelData.hunterRank,
+            unlockedPerk: `Attributes increased: +${(levelData.level - oldLevel) * 2} STR, +${(levelData.level - oldLevel) * 2} VIT. Rank Authority: ${levelData.hunterRank}!`,
+          });
+        }
+
+        const updatedProfile: HunterProfile = {
+          ...prev,
+          ...levelData,
+          totalXp: newTotalXp,
+          stats: {
+            ...prev.stats,
+            strength: prev.stats.strength + Math.floor(xpAmount / 350),
+            vitality: prev.stats.vitality + Math.floor(xpAmount / 400),
+          },
+          updatedAt: new Date().toISOString(),
+        };
+
+        // Sync to Firestore if signed in
+        if (user) {
+          const userDocRef = doc(db, 'users', user.uid);
+          setDoc(
+            userDocRef,
+            {
+              level: updatedProfile.level,
+              totalXp: updatedProfile.totalXp,
+              hunterRank: updatedProfile.hunterRank,
+              updatedAt: new Date().toISOString(),
+            },
+            { merge: true }
+          ).catch((err) => {
+            handleFirestoreError(err, OperationType.UPDATE, `users/${user.uid}`);
+          });
+        }
+
+        return updatedProfile;
+      });
+    },
+    [user]
+  );
+
+  // Add meal
+  const addMeal = useCallback(
+    async (mealData: Omit<MealItem, 'id' | 'timestamp'>) => {
+      const newMeal: MealItem = {
+        ...mealData,
+        id: 'meal_' + Date.now(),
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      };
+
+      const updatedMeals = [newMeal, ...dailyLog.meals];
+      const updatedLog: DailyLogData = {
+        ...dailyLog,
+        meals: updatedMeals,
+        updatedAt: new Date().toISOString(),
+      };
+
+      setDailyLog(updatedLog);
+
+      // Award XP for adhering to nutritional discipline
+      const mealXp = Math.min(250, Math.max(100, Math.round(newMeal.protein * 3)));
+      awardXp(mealXp, `Logged ${newMeal.category}: +${newMeal.protein}g Protein`);
+
+      // Sync Firestore
+      if (user) {
+        const logDocRef = doc(db, 'users', user.uid, 'dailyLogs', selectedDate);
+        await setDoc(logDocRef, updatedLog, { merge: true }).catch((err) => {
+          handleFirestoreError(err, OperationType.WRITE, `users/${user.uid}/dailyLogs/${selectedDate}`);
+        });
+      }
+    },
+    [dailyLog, selectedDate, user, awardXp]
+  );
+
+  // Delete meal
+  const deleteMeal = useCallback(
+    async (mealId: string) => {
+      const updatedMeals = dailyLog.meals.filter((m) => m.id !== mealId);
+      const updatedLog: DailyLogData = {
+        ...dailyLog,
+        meals: updatedMeals,
+        updatedAt: new Date().toISOString(),
+      };
+      setDailyLog(updatedLog);
+
+      if (user) {
+        const logDocRef = doc(db, 'users', user.uid, 'dailyLogs', selectedDate);
+        await setDoc(logDocRef, updatedLog, { merge: true }).catch((err) => {
+          handleFirestoreError(err, OperationType.UPDATE, `users/${user.uid}/dailyLogs/${selectedDate}`);
+        });
+      }
+    },
+    [dailyLog, selectedDate, user]
+  );
+
+  // Add cardio log
+  const addCardio = useCallback(
+    async (cardioData: Omit<CardioLog, 'id' | 'timestamp' | 'xpAwarded'>) => {
+      // Calculate XP based on distance and calories: 100 XP per 1km or 150 cal
+      const calculatedXp = Math.min(600, Math.max(150, Math.round(cardioData.distanceKm * 70 + cardioData.activeCaloriesBurned * 0.3)));
+      const newCardio: CardioLog = {
+        ...cardioData,
+        id: 'cardio_' + Date.now(),
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        xpAwarded: calculatedXp,
+      };
+
+      const updatedCardioList = [newCardio, ...dailyLog.cardio];
+      const updatedLog: DailyLogData = {
+        ...dailyLog,
+        cardio: updatedCardioList,
+        updatedAt: new Date().toISOString(),
+      };
+      setDailyLog(updatedLog);
+
+      awardXp(calculatedXp, `Completed ${newCardio.activityType} (${newCardio.distanceKm} km)`);
+
+      // Update agility & endurance stats
+      setProfile((prev) => ({
+        ...prev,
+        stats: {
+          ...prev.stats,
+          endurance: prev.stats.endurance + Math.round(newCardio.distanceKm),
+          agility: prev.stats.agility + 2,
+        },
+      }));
+
+      if (user) {
+        const logDocRef = doc(db, 'users', user.uid, 'dailyLogs', selectedDate);
+        await setDoc(logDocRef, updatedLog, { merge: true }).catch((err) => {
+          handleFirestoreError(err, OperationType.WRITE, `users/${user.uid}/dailyLogs/${selectedDate}`);
+        });
+      }
+    },
+    [dailyLog, selectedDate, user, awardXp]
+  );
+
+  // Delete cardio
+  const deleteCardio = useCallback(
+    async (cardioId: string) => {
+      const updatedCardioList = dailyLog.cardio.filter((c) => c.id !== cardioId);
+      const updatedLog: DailyLogData = {
+        ...dailyLog,
+        cardio: updatedCardioList,
+        updatedAt: new Date().toISOString(),
+      };
+      setDailyLog(updatedLog);
+
+      if (user) {
+        const logDocRef = doc(db, 'users', user.uid, 'dailyLogs', selectedDate);
+        await setDoc(logDocRef, updatedLog, { merge: true }).catch((err) => {
+          handleFirestoreError(err, OperationType.UPDATE, `users/${user.uid}/dailyLogs/${selectedDate}`);
+        });
+      }
+    },
+    [dailyLog, selectedDate, user]
+  );
+
+  // Toggle Exercise completion
+  const toggleExerciseCompletion = useCallback(
+    async (
+      splitId: string,
+      dayId: string,
+      exerciseId: string,
+      xpValue: number,
+      exerciseName: string
+    ) => {
+      const alreadyCompleted = dailyLog.completedExercisesToday.some(
+        (c) => c.splitId === splitId && c.dayId === dayId && c.exerciseId === exerciseId
+      );
+
+      let updatedCompletions = [...dailyLog.completedExercisesToday];
+
+      if (alreadyCompleted) {
+        updatedCompletions = updatedCompletions.filter(
+          (c) => !(c.splitId === splitId && c.dayId === dayId && c.exerciseId === exerciseId)
+        );
+      } else {
+        updatedCompletions.push({
+          splitId,
+          dayId,
+          exerciseId,
+          xpEarned: xpValue,
+          timestamp: new Date().toISOString(),
+        });
+        // Award XP and play sound
+        awardXp(xpValue, `Quest Completed: ${exerciseName} (+${xpValue} XP)`);
+        sound.play('quest_complete');
+      }
+
+      const updatedLog: DailyLogData = {
+        ...dailyLog,
+        completedExercisesToday: updatedCompletions,
+        updatedAt: new Date().toISOString(),
+      };
+
+      setDailyLog(updatedLog);
+
+      if (user) {
+        const logDocRef = doc(db, 'users', user.uid, 'dailyLogs', selectedDate);
+        await setDoc(logDocRef, updatedLog, { merge: true }).catch((err) => {
+          handleFirestoreError(err, OperationType.WRITE, `users/${user.uid}/dailyLogs/${selectedDate}`);
+        });
+      }
+    },
+    [dailyLog, selectedDate, user, awardXp]
+  );
+
+  // Add custom workout split
+  const addWorkoutSplit = useCallback(
+    async (
+      splitData: Omit<WorkoutSplit, 'splitId' | 'userId' | 'createdAt' | 'updatedAt'>
+    ) => {
+      const splitId = 'split_' + Date.now();
+      const newSplit: WorkoutSplit = {
+        ...splitData,
+        splitId,
+        userId: user ? user.uid : 'local-hunter',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        isActive: false,
+      };
+
+      const updatedSplits = [...workoutSplits, newSplit];
+      setWorkoutSplits(updatedSplits);
+      setActiveSplitId(splitId);
+      awardXp(150, `Created New Split Routine: ${newSplit.name}`);
+
+      if (user) {
+        const splitDocRef = doc(db, 'users', user.uid, 'workoutSplits', splitId);
+        await setDoc(splitDocRef, newSplit).catch((err) => {
+          handleFirestoreError(err, OperationType.CREATE, `users/${user.uid}/workoutSplits/${splitId}`);
+        });
+      }
+    },
+    [workoutSplits, user, awardXp]
+  );
+
+  // Delete custom split
+  const deleteWorkoutSplit = useCallback(
+    async (splitId: string) => {
+      const updated = workoutSplits.filter((s) => s.splitId !== splitId);
+      setWorkoutSplits(updated);
+      if (activeSplitId === splitId && updated.length > 0) {
+        setActiveSplitId(updated[0].splitId);
+      }
+
+      if (user) {
+        const splitDocRef = doc(db, 'users', user.uid, 'workoutSplits', splitId);
+        await deleteDoc(splitDocRef).catch((err) => {
+          handleFirestoreError(err, OperationType.DELETE, `users/${user.uid}/workoutSplits/${splitId}`);
+        });
+      }
+    },
+    [workoutSplits, activeSplitId, user]
+  );
+
+  const setActiveSplit = useCallback((splitId: string) => {
+    setActiveSplitId(splitId);
+  }, []);
+
+  // Update Macro goals
+  const updateMacroGoals = useCallback(
+    async (goals: {
+      calorieGoal: number;
+      proteinGoal: number;
+      carbsGoal: number;
+      fatGoal: number;
+    }) => {
+      setProfile((prev) => ({
+        ...prev,
+        ...goals,
+        updatedAt: new Date().toISOString(),
+      }));
+
+      if (user) {
+        const userDocRef = doc(db, 'users', user.uid);
+        await setDoc(userDocRef, goals, { merge: true }).catch((err) => {
+          handleFirestoreError(err, OperationType.UPDATE, `users/${user.uid}`);
+        });
+      }
+    },
+    [user]
+  );
+
+  const closeLevelUpModal = useCallback(() => {
+    setLevelUpModalData(null);
+  }, []);
+
+  const value = useMemo(
+    () => ({
+      user,
+      authLoading,
+      profile,
+      dailyLog,
+      workoutSplits,
+      activeSplitId,
+      selectedDate,
+      setSelectedDate,
+      addMeal,
+      deleteMeal,
+      addCardio,
+      deleteCardio,
+      toggleExerciseCompletion,
+      addWorkoutSplit,
+      deleteWorkoutSplit,
+      setActiveSplit,
+      updateMacroGoals,
+      levelUpModalData,
+      closeLevelUpModal,
+      soundEnabled,
+      setSoundEnabled,
+      recentXpNotification,
+    }),
+    [
+      user,
+      authLoading,
+      profile,
+      dailyLog,
+      workoutSplits,
+      activeSplitId,
+      selectedDate,
+      addMeal,
+      deleteMeal,
+      addCardio,
+      deleteCardio,
+      toggleExerciseCompletion,
+      addWorkoutSplit,
+      deleteWorkoutSplit,
+      setActiveSplit,
+      updateMacroGoals,
+      levelUpModalData,
+      closeLevelUpModal,
+      soundEnabled,
+      recentXpNotification,
+    ]
+  );
+
+  return <HunterContext.Provider value={value}>{children}</HunterContext.Provider>;
+};
+
+export const useHunter = (): HunterContextType => {
+  const context = useContext(HunterContext);
+  if (!context) {
+    throw new Error('useHunter must be used within a HunterProvider');
+  }
+  return context;
+};

@@ -1,0 +1,65 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile with Solo Leveling player stats and daily nutrition goals",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "displayName": { "type": "string", "maxLength": 100 },
+        "level": { "type": "number" },
+        "totalXp": { "type": "number" },
+        "hunterRank": { "type": "string", "enum": ["E-Rank", "D-Rank", "C-Rank", "B-Rank", "A-Rank", "S-Rank", "Shadow Monarch"] },
+        "calorieGoal": { "type": "number" },
+        "proteinGoal": { "type": "number" },
+        "carbsGoal": { "type": "number" },
+        "fatGoal": { "type": "number" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["userId", "level", "totalXp", "calorieGoal", "proteinGoal", "carbsGoal", "fatGoal"]
+    },
+    "DailyLog": {
+      "title": "DailyLog",
+      "description": "Daily nutrition and cardio log for a user",
+      "type": "object",
+      "properties": {
+        "date": { "type": "string", "maxLength": 30 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "meals": { "type": "array" },
+        "cardio": { "type": "array" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["date", "userId", "meals", "cardio"]
+    },
+    "WorkoutSplit": {
+      "title": "WorkoutSplit",
+      "description": "Custom workout routine split with nested days and exercises",
+      "type": "object",
+      "properties": {
+        "splitId": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 100 },
+        "description": { "type": "string", "maxLength": 500 },
+        "days": { "type": "array" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["splitId", "userId", "name", "days"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Stores player level, total XP, and daily macro goals"
+    },
+    "/users/{userId}/dailyLogs/{date}": {
+      "schema": { "$ref": "#/entities/DailyLog" },
+      "description": "Stores meals with macros and cardio activities for each date"
+    },
+    "/users/{userId}/workoutSplits/{splitId}": {
+      "schema": { "$ref": "#/entities/WorkoutSplit" },
+      "description": "Stores custom routine splits with days and exercises with XP values"
+    }
+  }
+}
