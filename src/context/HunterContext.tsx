@@ -25,6 +25,12 @@ import {
   getActiveUsername,
   setActiveUsername,
   ensureJonAccountWithCurrentProgress,
+  getRememberMe,
+  setRememberMe,
+  fetchAccountsFromServer,
+  fetchSplitsFromServer,
+  syncSplitsToServer,
+  syncAccountToServer,
 } from '../utils/accountStorage';
 import {
   calculateLevelData,
@@ -42,16 +48,23 @@ interface HunterContextType {
   activeSplitId: string | null;
   selectedDate: string;
   setSelectedDate: (date: string) => void;
+  // Gate & Session state
+  isGateUnlocked: boolean;
+  setIsGateUnlocked: (unlocked: boolean) => void;
+  rememberMe: boolean;
+  setRememberMePreference: (remember: boolean) => void;
   // Auth Portal Account
   currentAccount: HunterAccountData | null;
   loginAccount: (
     username: string,
-    password: string
+    password: string,
+    rememberMe?: boolean
   ) => { success: boolean; message?: string; account?: HunterAccountData };
   registerAccount: (
     username: string,
     password: string,
-    displayName: string
+    displayName: string,
+    rememberMe?: boolean
   ) => { success: boolean; message?: string; account?: HunterAccountData };
   logoutAccount: () => void;
   saveProgressToAccount: () => void;
@@ -398,22 +411,79 @@ export const HunterProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     reason: string;
   } | null>(null);
 
-  // Multi-user Account Portal State (Default: user: jon pass: jon)
+  const [rememberMe, setRememberMeState] = useState<boolean>(() => {
+    return getRememberMe();
+  });
+
+  const [isGateUnlocked, setIsGateUnlocked] = useState<boolean>(() => {
+    const isRemembered = getRememberMe();
+    const activeUsername = getActiveUsername();
+    return Boolean(isRemembered && activeUsername);
+  });
+
+  // Multi-user Account Portal State
   const [currentAccount, setCurrentAccount] = useState<HunterAccountData | null>(() => {
-    // Seed and bind current initial data to jon account
+    // Seed and bind current initial data to jon account in storage
     const jon = ensureJonAccountWithCurrentProgress(
       defaultInitialProfile,
       initialDefaultSplits,
       {}
     );
+    const isRemembered = getRememberMe();
     const activeUsername = getActiveUsername();
-    if (!activeUsername || activeUsername === 'jon') {
-      setActiveUsername('jon');
-      return jon;
+    if (isRemembered && activeUsername) {
+      const accounts = getStoredAccounts();
+      return accounts[activeUsername.toLowerCase()] || jon;
     }
-    const accounts = getStoredAccounts();
-    return accounts[activeUsername] || jon;
+    return null;
   });
+
+  const setRememberMePreference = useCallback((remember: boolean) => {
+    setRememberMe(remember);
+    setRememberMeState(remember);
+  }, []);
+
+  // Fetch overall server database on mount (cross-device sync PC <-> Mobile)
+  useEffect(() => {
+    async function loadOverallDatabase() {
+      try {
+        const [serverSplits, serverAccounts] = await Promise.all([
+          fetchSplitsFromServer(),
+          fetchAccountsFromServer(),
+        ]);
+
+        if (serverSplits && Array.isArray(serverSplits) && serverSplits.length > 0) {
+          setWorkoutSplits((prevLocal) => {
+            const merged = [...serverSplits];
+            prevLocal.forEach((loc) => {
+              if (!merged.some((m) => m.splitId === loc.splitId)) {
+                merged.push(loc);
+              }
+            });
+            localStorage.setItem('hunter_splits', JSON.stringify(merged));
+            return merged;
+          });
+        } else {
+          syncSplitsToServer(workoutSplits).catch(() => {});
+        }
+
+        if (serverAccounts) {
+          const activeUser = getActiveUsername();
+          if (activeUser && serverAccounts[activeUser.toLowerCase()]) {
+            const acc = serverAccounts[activeUser.toLowerCase()];
+            setCurrentAccount(acc);
+            if (acc.profile) setProfile(acc.profile);
+            if (acc.workoutSplits && acc.workoutSplits.length > 0) {
+              setWorkoutSplits(acc.workoutSplits);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Cross-device initial sync error:', err);
+      }
+    }
+    loadOverallDatabase();
+  }, []);
 
   // Sync sound setting
   useEffect(() => {
@@ -449,6 +519,7 @@ export const HunterProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setUser(currentUser);
       setAuthLoading(false);
       if (currentUser) {
+        setIsGateUnlocked(true);
         setProfile((prev) => ({
           ...prev,
           userId: currentUser.uid,
@@ -629,9 +700,10 @@ export const HunterProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             loadedSplits.push(docSnap.data() as WorkoutSplit);
           });
           setWorkoutSplits(loadedSplits);
+          syncSplitsToServer(loadedSplits).catch(() => {});
         } else {
-          // Seed the initial default routine to remote
-          initialDefaultSplits.forEach((split) => {
+          // Seed the remote with all current workoutSplits (including custom routines created by user)
+          workoutSplits.forEach((split) => {
             const splitDoc = doc(db, 'users', user.uid, 'workoutSplits', split.splitId);
             setDoc(splitDoc, { ...split, userId: user.uid }).catch((err) => {
               handleFirestoreError(err, OperationType.WRITE, `users/${user.uid}/workoutSplits/${split.splitId}`);
@@ -1229,7 +1301,7 @@ export const HunterProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // Login with Hunter Portal credentials (supports user: jon pass: jon)
   const loginAccount = useCallback(
-    (uName: string, pass: string) => {
+    (uName: string, pass: string, rememberPreference?: boolean) => {
       const cleanUser = uName.trim().toLowerCase();
       // Ensure jon exists with current progress before checking
       ensureJonAccountWithCurrentProgress(profile, workoutSplits, { [dailyLog.date]: dailyLog });
@@ -1249,6 +1321,12 @@ export const HunterProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       saveAccountToStorage(target);
       setActiveUsername(target.username);
       setCurrentAccount(target);
+
+      // Handle Remember Me / Always Login
+      const shouldRemember = rememberPreference !== undefined ? rememberPreference : true;
+      setRememberMe(shouldRemember);
+      setRememberMeState(shouldRemember);
+      setIsGateUnlocked(true);
 
       // Restore user progress
       if (target.profile) {
@@ -1270,7 +1348,7 @@ export const HunterProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // Register new Hunter Portal Account
   const registerAccount = useCallback(
-    (uName: string, pass: string, dispName: string) => {
+    (uName: string, pass: string, dispName: string, rememberPreference?: boolean) => {
       const cleanUser = uName.trim().toLowerCase();
       const accounts = getStoredAccounts();
 
@@ -1311,6 +1389,11 @@ export const HunterProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setWorkoutSplits(initialDefaultSplits);
       setActiveSplitId('shadow-ppl-split');
 
+      const shouldRemember = rememberPreference !== undefined ? rememberPreference : true;
+      setRememberMe(shouldRemember);
+      setRememberMeState(shouldRemember);
+      setIsGateUnlocked(true);
+
       sound.play('level_up');
       return { success: true, account: newAccount };
     },
@@ -1320,7 +1403,10 @@ export const HunterProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // Logout from Hunter Account
   const logoutAccount = useCallback(() => {
     setActiveUsername(null);
+    setRememberMe(false);
+    setRememberMeState(false);
     setCurrentAccount(null);
+    setIsGateUnlocked(false);
     sound.play('click');
   }, []);
 
@@ -1357,6 +1443,10 @@ export const HunterProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       activeSplitId,
       selectedDate,
       setSelectedDate,
+      isGateUnlocked,
+      setIsGateUnlocked,
+      rememberMe,
+      setRememberMePreference,
       currentAccount,
       loginAccount,
       registerAccount,
@@ -1393,6 +1483,9 @@ export const HunterProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       activeSplitId,
       selectedDate,
       setSelectedDate,
+      isGateUnlocked,
+      rememberMe,
+      setRememberMePreference,
       currentAccount,
       loginAccount,
       registerAccount,

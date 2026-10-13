@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react';
 import path from 'path';
 import { defineConfig, type Plugin } from 'vite';
 import { analyzeMealImage, chatWithFitnessAi } from './server/geminiService.ts';
+import { getAllAccounts, getAccount, saveAccount, getAllSplits, saveSplits } from './server/accountDatabase.ts';
 
 function apiMiddlewarePlugin(): Plugin {
   return {
@@ -45,6 +46,84 @@ function apiMiddlewarePlugin(): Plugin {
               res.statusCode = 500;
               res.setHeader('Content-Type', 'application/json');
               res.end(JSON.stringify({ error: err.message || 'Failed to process chat' }));
+            }
+          });
+          return;
+        }
+
+        if (req.url === '/api/accounts' && req.method === 'GET') {
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify(getAllAccounts()));
+          return;
+        }
+
+        if (req.url?.startsWith('/api/accounts/') && req.method === 'GET') {
+          const username = decodeURIComponent(req.url.replace('/api/accounts/', '').split('?')[0]);
+          const account = getAccount(username);
+          if (!account) {
+            res.statusCode = 404;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ error: 'Account not found' }));
+          } else {
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify(account));
+          }
+          return;
+        }
+
+        if (req.url === '/api/accounts/sync' && req.method === 'POST') {
+          let body = '';
+          req.on('data', (chunk) => {
+            body += chunk;
+          });
+          req.on('end', () => {
+            try {
+              const { account } = JSON.parse(body);
+              if (account && account.username) {
+                saveAccount(account);
+                res.setHeader('Content-Type', 'application/json');
+                res.end(JSON.stringify({ success: true, account: getAccount(account.username) }));
+              } else {
+                res.statusCode = 400;
+                res.setHeader('Content-Type', 'application/json');
+                res.end(JSON.stringify({ error: 'Invalid account data' }));
+              }
+            } catch (err: any) {
+              res.statusCode = 500;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ error: err.message || 'Failed to sync account' }));
+            }
+          });
+          return;
+        }
+
+        if (req.url === '/api/splits' && req.method === 'GET') {
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify(getAllSplits()));
+          return;
+        }
+
+        if (req.url === '/api/splits/sync' && req.method === 'POST') {
+          let body = '';
+          req.on('data', (chunk) => {
+            body += chunk;
+          });
+          req.on('end', () => {
+            try {
+              const { splits } = JSON.parse(body);
+              if (Array.isArray(splits)) {
+                saveSplits(splits);
+                res.setHeader('Content-Type', 'application/json');
+                res.end(JSON.stringify({ success: true, splits: getAllSplits() }));
+              } else {
+                res.statusCode = 400;
+                res.setHeader('Content-Type', 'application/json');
+                res.end(JSON.stringify({ error: 'Splits must be an array' }));
+              }
+            } catch (err: any) {
+              res.statusCode = 500;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ error: err.message || 'Failed to sync splits' }));
             }
           });
           return;

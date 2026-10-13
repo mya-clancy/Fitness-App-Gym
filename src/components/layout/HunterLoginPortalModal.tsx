@@ -14,6 +14,8 @@ import {
   Award,
   LogOut,
   Save,
+  CheckSquare,
+  Square,
 } from 'lucide-react';
 
 interface HunterLoginPortalModalProps {
@@ -32,15 +34,15 @@ export const HunterLoginPortalModal: React.FC<HunterLoginPortalModalProps> = ({
     logoutAccount,
     saveProgressToAccount,
     profile,
+    rememberMe,
   } = useHunter();
 
-  const [activeTab, setActiveTab] = useState<'login' | 'register'>(
-    currentAccount ? 'login' : 'login'
-  );
+  const [activeTab, setActiveTab] = useState<'login' | 'register'>('login');
 
   // Form states
-  const [username, setUsername] = useState<string>('jon');
-  const [password, setPassword] = useState<string>('jon');
+  const [username, setUsername] = useState<string>('');
+  const [password, setPassword] = useState<string>('');
+  const [localRememberMe, setLocalRememberMe] = useState<boolean>(rememberMe);
 
   // Register states
   const [regUsername, setRegUsername] = useState<string>('');
@@ -54,22 +56,6 @@ export const HunterLoginPortalModal: React.FC<HunterLoginPortalModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleQuickLoginJon = () => {
-    setUsername('jon');
-    setPassword('jon');
-    const result = loginAccount('jon', 'jon');
-    if (result.success) {
-      setSuccessMessage('Logged in successfully as user: jon!');
-      setErrorMessage('');
-      setTimeout(() => {
-        setSuccessMessage('');
-        onClose();
-      }, 1000);
-    } else {
-      setErrorMessage(result.message || 'Login failed.');
-    }
-  };
-
   const handleLoginSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
@@ -80,7 +66,7 @@ export const HunterLoginPortalModal: React.FC<HunterLoginPortalModalProps> = ({
       return;
     }
 
-    const result = loginAccount(username.trim(), password.trim());
+    const result = loginAccount(username.trim(), password.trim(), localRememberMe);
     if (result.success) {
       setSuccessMessage(`Welcome back, Hunter ${result.account?.displayName || username}!`);
       setTimeout(() => {
@@ -110,7 +96,8 @@ export const HunterLoginPortalModal: React.FC<HunterLoginPortalModalProps> = ({
     const result = registerAccount(
       regUsername.trim(),
       regPassword.trim(),
-      regDisplayName.trim() || regUsername.trim()
+      regDisplayName.trim() || regUsername.trim(),
+      localRememberMe
     );
 
     if (result.success) {
@@ -161,38 +148,6 @@ export const HunterLoginPortalModal: React.FC<HunterLoginPortalModalProps> = ({
           </button>
         </div>
 
-        {/* Highlighted Banner for user: jon pass: jon */}
-        <div className="mb-5 p-3.5 rounded-xl bg-cyan-950/40 border border-cyan-500/50 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-[0_0_20px_rgba(6,182,212,0.15)]">
-          <div>
-            <div className="flex items-center gap-1.5 text-xs font-bold text-cyan-300 font-heading">
-              <Zap className="w-3.5 h-3.5 text-cyan-400 fill-cyan-400" />
-              <span>DEFAULT HUNTER CREDENTIALS:</span>
-            </div>
-            <p className="text-xs font-mono text-slate-200 mt-0.5">
-              User:{' '}
-              <span className="text-white font-bold bg-slate-900/90 px-1.5 py-0.5 rounded border border-cyan-500/40">
-                jon
-              </span>{' '}
-              | Pass:{' '}
-              <span className="text-white font-bold bg-slate-900/90 px-1.5 py-0.5 rounded border border-cyan-500/40">
-                jon
-              </span>
-            </p>
-            <p className="text-[10px] text-cyan-400/80 font-mono mt-1">
-              All current training progress, splits & macros saved to this account!
-            </p>
-          </div>
-
-          <button
-            type="button"
-            onClick={handleQuickLoginJon}
-            className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-black font-extrabold text-xs font-heading shadow-[0_0_15px_rgba(6,182,212,0.4)] cursor-pointer transition-all hover:scale-105"
-          >
-            <Zap className="w-3.5 h-3.5 fill-black" />
-            <span>QUICK LOGIN: JON</span>
-          </button>
-        </div>
-
         {/* Logged in state overview card */}
         {currentAccount && (
           <div className="mb-5 p-3.5 rounded-xl bg-slate-950/80 border border-emerald-500/40 flex items-center justify-between gap-3">
@@ -229,7 +184,10 @@ export const HunterLoginPortalModal: React.FC<HunterLoginPortalModalProps> = ({
 
               <button
                 type="button"
-                onClick={logoutAccount}
+                onClick={() => {
+                  logoutAccount();
+                  onClose();
+                }}
                 title="Log out from current session"
                 className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-red-950/50 border border-red-500/40 hover:bg-red-900/70 text-red-300 text-xs font-mono transition-colors cursor-pointer"
               >
@@ -298,13 +256,13 @@ export const HunterLoginPortalModal: React.FC<HunterLoginPortalModalProps> = ({
             <div className="space-y-1.5">
               <label className="text-xs font-mono text-slate-300 flex items-center gap-1.5">
                 <User className="w-3.5 h-3.5 text-cyan-400" />
-                <span>Username or Hunter ID:</span>
+                <span>Hunter Username:</span>
               </label>
               <input
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="Enter username (e.g. jon)"
+                placeholder="Enter hunter username (e.g. jon)"
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs font-mono text-white focus:outline-none focus:border-cyan-500 focus:shadow-[0_0_15px_rgba(6,182,212,0.2)]"
               />
             </div>
@@ -318,9 +276,34 @@ export const HunterLoginPortalModal: React.FC<HunterLoginPortalModalProps> = ({
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Enter password (e.g. jon)"
+                placeholder="Enter password"
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs font-mono text-white focus:outline-none focus:border-cyan-500 focus:shadow-[0_0_15px_rgba(6,182,212,0.2)]"
               />
+            </div>
+
+            {/* Remember Me / Always Login Toggle */}
+            <div
+              onClick={() => setLocalRememberMe(!localRememberMe)}
+              className="p-2.5 rounded-xl bg-slate-900/60 border border-slate-800 hover:border-cyan-500/40 transition-colors flex items-center justify-between cursor-pointer group"
+            >
+              <div className="flex items-center gap-2">
+                {localRememberMe ? (
+                  <CheckSquare className="w-4 h-4 text-cyan-400 shrink-0" />
+                ) : (
+                  <Square className="w-4 h-4 text-slate-500 group-hover:text-slate-400 shrink-0" />
+                )}
+                <div>
+                  <span className="text-xs font-bold text-slate-200 font-mono block">
+                    REMEMBER ME / ALWAYS LOGIN
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-mono block">
+                    Stay logged in on this device across browser sessions
+                  </span>
+                </div>
+              </div>
+              <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${localRememberMe ? 'bg-cyan-950 text-cyan-300 border border-cyan-500/40' : 'bg-slate-800 text-slate-400'}`}>
+                {localRememberMe ? 'ON' : 'OFF'}
+              </span>
             </div>
 
             <button
@@ -359,7 +342,7 @@ export const HunterLoginPortalModal: React.FC<HunterLoginPortalModalProps> = ({
                 type="text"
                 value={regDisplayName}
                 onChange={(e) => setRegDisplayName(e.target.value)}
-                placeholder="Display Name (e.g. Sung Jin Woo)"
+                placeholder="Display Name (e.g. Sung Jin-Woo)"
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs font-mono text-white focus:outline-none focus:border-cyan-500"
               />
             </div>
@@ -392,6 +375,31 @@ export const HunterLoginPortalModal: React.FC<HunterLoginPortalModalProps> = ({
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs font-mono text-white focus:outline-none focus:border-cyan-500"
                 />
               </div>
+            </div>
+
+            {/* Remember Me / Always Login Toggle */}
+            <div
+              onClick={() => setLocalRememberMe(!localRememberMe)}
+              className="p-2.5 rounded-xl bg-slate-900/60 border border-slate-800 hover:border-cyan-500/40 transition-colors flex items-center justify-between cursor-pointer group"
+            >
+              <div className="flex items-center gap-2">
+                {localRememberMe ? (
+                  <CheckSquare className="w-4 h-4 text-cyan-400 shrink-0" />
+                ) : (
+                  <Square className="w-4 h-4 text-slate-500 group-hover:text-slate-400 shrink-0" />
+                )}
+                <div>
+                  <span className="text-xs font-bold text-slate-200 font-mono block">
+                    REMEMBER ME / ALWAYS LOGIN
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-mono block">
+                    Stay logged in on this device across browser sessions
+                  </span>
+                </div>
+              </div>
+              <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${localRememberMe ? 'bg-cyan-950 text-cyan-300 border border-cyan-500/40' : 'bg-slate-800 text-slate-400'}`}>
+                {localRememberMe ? 'ON' : 'OFF'}
+              </span>
             </div>
 
             <button

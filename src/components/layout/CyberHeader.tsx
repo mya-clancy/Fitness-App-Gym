@@ -164,27 +164,31 @@ export const CyberHeader: React.FC = () => {
               )}
             </button>
 
-            {/* Firebase Google Cloud Sync (Optional) */}
+            {/* Firebase Google Cloud Sync (Visible on all devices including Mobile Chrome) */}
             <button
               onClick={handleAuth}
               disabled={authLoading}
-              title={user ? 'Google Cloud Sync Active' : 'Optional: Sign in to Google to sync cloud backup'}
-              className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg font-medium transition-all cursor-pointer ${
+              title={user ? 'Google Cloud Sync Active (Click to disconnect)' : 'Sign in to Google to sync cloud database across devices'}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg font-medium transition-all cursor-pointer ${
                 user
-                  ? 'bg-slate-900/80 border border-emerald-500/40 text-emerald-300 hover:bg-slate-800'
-                  : 'bg-slate-900/80 border border-slate-700/80 text-slate-400 hover:text-slate-200 hover:border-slate-600'
+                  ? 'bg-slate-900/80 border border-emerald-500/50 text-emerald-300 hover:bg-slate-800 shadow-[0_0_10px_rgba(16,185,129,0.2)]'
+                  : 'bg-cyan-950/40 hover:bg-cyan-900/60 border border-cyan-500/40 text-cyan-300 hover:text-white shadow-[0_0_10px_rgba(6,182,212,0.15)]'
               }`}
             >
               {user ? (
                 <>
-                  <UserCheck className="w-3.5 h-3.5 text-emerald-400" />
-                  <span className="truncate max-w-[90px] text-[11px] font-mono">{user.displayName || 'Google'}</span>
-                  <LogOut className="w-3 h-3 ml-0.5 text-slate-400 hover:text-red-400" />
+                  <UserCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <span className="truncate max-w-[70px] sm:max-w-[100px] text-[11px] font-mono">
+                    {user.displayName?.split(' ')[0] || 'SYNCED'}
+                  </span>
+                  <LogOut className="w-3 h-3 ml-0.5 text-slate-400 hover:text-red-400 shrink-0" />
                 </>
               ) : (
                 <>
-                  <LogIn className="w-3.5 h-3.5 text-slate-400" />
-                  <span className="text-[11px] font-mono">GOOGLE SYNC</span>
+                  <LogIn className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                  <span className="text-[11px] font-mono whitespace-nowrap">
+                    <span className="hidden sm:inline">GOOGLE </span>SYNC
+                  </span>
                 </>
               )}
             </button>

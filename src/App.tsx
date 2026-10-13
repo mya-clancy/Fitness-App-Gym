@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { HunterProvider } from './context/HunterContext';
+import { HunterProvider, useHunter } from './context/HunterContext';
+import { HunterAccessGate } from './components/auth/HunterAccessGate';
 import { CyberHeader } from './components/layout/CyberHeader';
 import { NavigationTabs, TabType } from './components/layout/NavigationTabs';
 import { LevelUpModal } from './components/layout/LevelUpModal';
@@ -121,7 +122,8 @@ const MainDashboard: React.FC<{
   );
 };
 
-export default function App() {
+const AppContent: React.FC = () => {
+  const { isGateUnlocked } = useHunter();
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   const [scannerOpen, setScannerOpen] = useState<boolean>(false);
   const [cardioOpen, setCardioOpen] = useState<boolean>(false);
@@ -139,77 +141,88 @@ export default function App() {
     setSplitBuilderOpen(true);
   };
 
+  // If user has not authenticated or bypassed gate, show Access Portal first
+  if (!isGateUnlocked) {
+    return <HunterAccessGate />;
+  }
+
   return (
-    <HunterProvider>
-      <div className="min-h-screen bg-[#07090e] text-slate-100 flex flex-col relative selection:bg-cyan-500 selection:text-black">
-        {/* Subtle Cyber Grid Background overlay */}
-        <div className="fixed inset-0 bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:24px_24px] opacity-20 pointer-events-none" />
+    <div className="min-h-screen bg-[#07090e] text-slate-100 flex flex-col relative selection:bg-cyan-500 selection:text-black">
+      {/* Subtle Cyber Grid Background overlay */}
+      <div className="fixed inset-0 bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:24px_24px] opacity-20 pointer-events-none" />
 
-        {/* System HUD Header */}
-        <CyberHeader />
+      {/* System HUD Header */}
+      <CyberHeader />
 
-        {/* Main Content Viewport */}
-        <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-4 lg:px-8 py-4 sm:py-6 pb-24 md:pb-8 z-10">
-          <NavigationTabs activeTab={activeTab} onChangeTab={setActiveTab} />
+      {/* Main Content Viewport */}
+      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-4 lg:px-8 py-4 sm:py-6 pb-24 md:pb-8 z-10">
+        <NavigationTabs activeTab={activeTab} onChangeTab={setActiveTab} />
 
-          {activeTab === 'dashboard' && (
-            <MainDashboard
-              onOpenScanner={() => setScannerOpen(true)}
-              onOpenCardio={() => setCardioOpen(true)}
+        {activeTab === 'dashboard' && (
+          <MainDashboard
+            onOpenScanner={() => setScannerOpen(true)}
+            onOpenCardio={() => setCardioOpen(true)}
+            onOpenSplitBuilder={handleOpenCreateSplit}
+            onEditSplit={handleOpenEditSplit}
+            onOpenAiChat={() => setAiChatOpen(true)}
+          />
+        )}
+
+        {activeTab === 'nutrition' && (
+          <div className="space-y-6">
+            <MacroProgressRings onOpenFoodScanner={() => setScannerOpen(true)} />
+            <DailyMealList onOpenScanner={() => setScannerOpen(true)} />
+          </div>
+        )}
+
+        {activeTab === 'cardio' && (
+          <WeeklyCardioGraph onOpenCardioLogger={() => setCardioOpen(true)} />
+        )}
+
+        {activeTab === 'workout' && (
+          <div className="space-y-6">
+            <ActiveWorkoutView
               onOpenSplitBuilder={handleOpenCreateSplit}
               onEditSplit={handleOpenEditSplit}
-              onOpenAiChat={() => setAiChatOpen(true)}
             />
-          )}
+          </div>
+        )}
 
-          {activeTab === 'nutrition' && (
-            <div className="space-y-6">
-              <MacroProgressRings onOpenFoodScanner={() => setScannerOpen(true)} />
-              <DailyMealList onOpenScanner={() => setScannerOpen(true)} />
-            </div>
-          )}
+        {activeTab === 'stats' && <HunterStatusView />}
+      </main>
 
-          {activeTab === 'cardio' && (
-            <WeeklyCardioGraph onOpenCardioLogger={() => setCardioOpen(true)} />
-          )}
+      {/* Floating Coach Trigger Button */}
+      <button
+        onClick={() => setAiChatOpen(true)}
+        className="fixed bottom-16 md:bottom-6 right-4 sm:right-6 z-40 bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-500 hover:from-cyan-300 hover:to-blue-400 text-black font-extrabold px-4 py-2.5 rounded-full shadow-[0_0_25px_rgba(6,182,212,0.6)] flex items-center gap-2 font-heading text-xs cursor-pointer border border-cyan-300 transition-all hover:scale-105 active:scale-95"
+        title="Coach: Sung Jin Woo"
+      >
+        <Zap className="w-4 h-4 fill-black" />
+        <span className="hidden sm:inline">SUNG JIN WOO'S DEN</span>
+        <span className="sm:hidden font-mono font-bold">COACH JIN WOO</span>
+      </button>
 
-          {activeTab === 'workout' && (
-            <div className="space-y-6">
-              <ActiveWorkoutView
-                onOpenSplitBuilder={handleOpenCreateSplit}
-                onEditSplit={handleOpenEditSplit}
-              />
-            </div>
-          )}
+      {/* Global Modals */}
+      <FoodScannerModal isOpen={scannerOpen} onClose={() => setScannerOpen(false)} />
+      <CardioLoggerModal isOpen={cardioOpen} onClose={() => setCardioOpen(false)} />
+      <SplitBuilder
+        isOpen={splitBuilderOpen}
+        onClose={() => {
+          setSplitBuilderOpen(false);
+          setEditingSplit(null);
+        }}
+        editingSplit={editingSplit}
+      />
+      <FitnessAiChatModal isOpen={aiChatOpen} onClose={() => setAiChatOpen(false)} />
+      <LevelUpModal />
+    </div>
+  );
+};
 
-          {activeTab === 'stats' && <HunterStatusView />}
-        </main>
-
-        {/* Floating Coach Trigger Button */}
-        <button
-          onClick={() => setAiChatOpen(true)}
-          className="fixed bottom-16 md:bottom-6 right-4 sm:right-6 z-40 bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-500 hover:from-cyan-300 hover:to-blue-400 text-black font-extrabold px-4 py-2.5 rounded-full shadow-[0_0_25px_rgba(6,182,212,0.6)] flex items-center gap-2 font-heading text-xs cursor-pointer border border-cyan-300 transition-all hover:scale-105 active:scale-95"
-          title="Coach: Sung Jin Woo"
-        >
-          <Zap className="w-4 h-4 fill-black" />
-          <span className="hidden sm:inline">SUNG JIN WOO'S DEN</span>
-          <span className="sm:hidden font-mono font-bold">COACH JIN WOO</span>
-        </button>
-
-        {/* Global Modals */}
-        <FoodScannerModal isOpen={scannerOpen} onClose={() => setScannerOpen(false)} />
-        <CardioLoggerModal isOpen={cardioOpen} onClose={() => setCardioOpen(false)} />
-        <SplitBuilder
-          isOpen={splitBuilderOpen}
-          onClose={() => {
-            setSplitBuilderOpen(false);
-            setEditingSplit(null);
-          }}
-          editingSplit={editingSplit}
-        />
-        <FitnessAiChatModal isOpen={aiChatOpen} onClose={() => setAiChatOpen(false)} />
-        <LevelUpModal />
-      </div>
+export default function App() {
+  return (
+    <HunterProvider>
+      <AppContent />
     </HunterProvider>
   );
 }
