@@ -3,6 +3,7 @@ import { useHunter } from '../../context/HunterContext';
 import { loginWithGoogle, logoutUser } from '../../config/firebase';
 import { getPhilippineTimeString } from '../../utils/phTime';
 import { HunterCalendarModal } from '../calendar/HunterCalendarModal';
+import { HunterLoginPortalModal } from './HunterLoginPortalModal';
 import {
   Volume2,
   VolumeX,
@@ -15,6 +16,8 @@ import {
   RotateCcw,
   AlertTriangle,
   X,
+  Shield,
+  KeyRound,
 } from 'lucide-react';
 
 export const CyberHeader: React.FC = () => {
@@ -27,12 +30,14 @@ export const CyberHeader: React.FC = () => {
     setSoundEnabled,
     recentXpNotification,
     resetAllData,
+    currentAccount,
   } = useHunter();
 
   const [currentTime, setCurrentTime] = useState<string>('');
   const [showResetModal, setShowResetModal] = useState<boolean>(false);
   const [resetSuccess, setResetSuccess] = useState<boolean>(false);
   const [showCalendarModal, setShowCalendarModal] = useState<boolean>(false);
+  const [showPortalModal, setShowPortalModal] = useState<boolean>(false);
 
   useEffect(() => {
     const updateTime = () => {
@@ -134,28 +139,52 @@ export const CyberHeader: React.FC = () => {
               <span>RESET DATA</span>
             </button>
 
-            {/* Firebase Authentication Status (Optional) */}
+            {/* Hunter Portal Login / Register / Account badge */}
+            <button
+              onClick={() => setShowPortalModal(true)}
+              title="Open Hunter System Access Portal (Login / Register / Account)"
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono transition-all cursor-pointer ${
+                currentAccount
+                  ? 'bg-gradient-to-r from-cyan-950/80 to-blue-950/80 border border-cyan-400/50 hover:border-cyan-300 text-cyan-300 shadow-[0_0_15px_rgba(6,182,212,0.25)]'
+                  : 'bg-cyan-500 hover:bg-cyan-400 text-black font-extrabold font-heading shadow-[0_0_15px_rgba(6,182,212,0.5)]'
+              }`}
+            >
+              <Shield className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+              {currentAccount ? (
+                <div className="flex items-center gap-1.5">
+                  <span className="font-bold tracking-wider">
+                    HUNTER: {currentAccount.displayName.toUpperCase()}
+                  </span>
+                  <span className="text-[10px] text-cyan-400/90 font-mono hidden sm:inline bg-cyan-900/40 px-1 py-0.2 rounded border border-cyan-500/30">
+                    @{currentAccount.username}
+                  </span>
+                </div>
+              ) : (
+                <span>LOGIN / REGISTER</span>
+              )}
+            </button>
+
+            {/* Firebase Google Cloud Sync (Optional) */}
             <button
               onClick={handleAuth}
               disabled={authLoading}
-              title={user ? 'Signed in to Google Cloud' : 'Optional: Sign in to sync across devices'}
-              className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg font-medium transition-all cursor-pointer ${
+              title={user ? 'Google Cloud Sync Active' : 'Optional: Sign in to Google to sync cloud backup'}
+              className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg font-medium transition-all cursor-pointer ${
                 user
                   ? 'bg-slate-900/80 border border-emerald-500/40 text-emerald-300 hover:bg-slate-800'
-                  : 'bg-slate-900/80 border border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/10'
+                  : 'bg-slate-900/80 border border-slate-700/80 text-slate-400 hover:text-slate-200 hover:border-slate-600'
               }`}
             >
               {user ? (
                 <>
                   <UserCheck className="w-3.5 h-3.5 text-emerald-400" />
-                  <span className="truncate max-w-[100px]">{user.displayName || 'Jon'}</span>
-                  <LogOut className="w-3 h-3 ml-1 text-slate-400 hover:text-red-400" />
+                  <span className="truncate max-w-[90px] text-[11px] font-mono">{user.displayName || 'Google'}</span>
+                  <LogOut className="w-3 h-3 ml-0.5 text-slate-400 hover:text-red-400" />
                 </>
               ) : (
                 <>
-                  <LogIn className="w-3.5 h-3.5 text-cyan-400" />
-                  <span className="hidden sm:inline">SYNC CLOUD</span>
-                  <span className="sm:hidden">LOGIN</span>
+                  <LogIn className="w-3.5 h-3.5 text-slate-400" />
+                  <span className="text-[11px] font-mono">GOOGLE SYNC</span>
                 </>
               )}
             </button>
@@ -238,6 +267,12 @@ export const CyberHeader: React.FC = () => {
       <HunterCalendarModal
         isOpen={showCalendarModal}
         onClose={() => setShowCalendarModal(false)}
+      />
+
+      {/* Hunter System Access & Login Portal Modal */}
+      <HunterLoginPortalModal
+        isOpen={showPortalModal}
+        onClose={() => setShowPortalModal(false)}
       />
     </>
   );

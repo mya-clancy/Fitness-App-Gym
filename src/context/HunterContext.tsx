@@ -18,6 +18,14 @@ import {
   ExerciseItem,
   WorkoutDay,
 } from '../types/hunter';
+import { HunterAccountData } from '../types/auth';
+import {
+  getStoredAccounts,
+  saveAccountToStorage,
+  getActiveUsername,
+  setActiveUsername,
+  ensureJonAccountWithCurrentProgress,
+} from '../utils/accountStorage';
 import {
   calculateLevelData,
   triggerLevelUpConfetti,
@@ -34,6 +42,19 @@ interface HunterContextType {
   activeSplitId: string | null;
   selectedDate: string;
   setSelectedDate: (date: string) => void;
+  // Auth Portal Account
+  currentAccount: HunterAccountData | null;
+  loginAccount: (
+    username: string,
+    password: string
+  ) => { success: boolean; message?: string; account?: HunterAccountData };
+  registerAccount: (
+    username: string,
+    password: string,
+    displayName: string
+  ) => { success: boolean; message?: string; account?: HunterAccountData };
+  logoutAccount: () => void;
+  saveProgressToAccount: () => void;
   // Actions
   addMeal: (meal: Omit<MealItem, 'id' | 'timestamp'>) => Promise<void>;
   deleteMeal: (mealId: string) => Promise<void>;
@@ -49,6 +70,7 @@ interface HunterContextType {
   addWorkoutSplit: (
     split: Omit<WorkoutSplit, 'splitId' | 'userId' | 'createdAt' | 'updatedAt'>
   ) => Promise<void>;
+  importSplitFromJson: (importedSplit: WorkoutSplit) => Promise<void>;
   updateWorkoutSplit: (
     splitId: string,
     updatedData: Partial<WorkoutSplit>
@@ -376,10 +398,50 @@ export const HunterProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     reason: string;
   } | null>(null);
 
+  // Multi-user Account Portal State (Default: user: jon pass: jon)
+  const [currentAccount, setCurrentAccount] = useState<HunterAccountData | null>(() => {
+    // Seed and bind current initial data to jon account
+    const jon = ensureJonAccountWithCurrentProgress(
+      defaultInitialProfile,
+      initialDefaultSplits,
+      {}
+    );
+    const activeUsername = getActiveUsername();
+    if (!activeUsername || activeUsername === 'jon') {
+      setActiveUsername('jon');
+      return jon;
+    }
+    const accounts = getStoredAccounts();
+    return accounts[activeUsername] || jon;
+  });
+
   // Sync sound setting
   useEffect(() => {
     sound.enabled = soundEnabled;
   }, [soundEnabled]);
+
+  // Synchronize and bind all current progress to the active hunter account (e.g. user: jon pass: jon)
+  useEffect(() => {
+    if (currentAccount) {
+      const accounts = getStoredAccounts();
+      const userKey = currentAccount.username.toLowerCase();
+      const updatedAccount: HunterAccountData = {
+        ...currentAccount,
+        profile: {
+          ...profile,
+          displayName: currentAccount.displayName || profile.displayName,
+        },
+        dailyLogs: {
+          ...(currentAccount.dailyLogs || {}),
+          [dailyLog.date]: dailyLog,
+        },
+        workoutSplits,
+        lastLoginAt: new Date().toISOString(),
+      };
+      accounts[userKey] = updatedAccount;
+      saveAccountToStorage(updatedAccount);
+    }
+  }, [profile, dailyLog, workoutSplits, currentAccount]);
 
   // Auth observer
   useEffect(() => {
@@ -1140,6 +1202,147 @@ export const HunterProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     [user]
   );
 
+  // Save Current Progress Manually to Active Account
+  const saveProgressToAccount = useCallback(() => {
+    if (currentAccount) {
+      const userKey = currentAccount.username.toLowerCase();
+      const accounts = getStoredAccounts();
+      const updatedAccount: HunterAccountData = {
+        ...currentAccount,
+        profile: {
+          ...profile,
+          displayName: currentAccount.displayName || profile.displayName,
+        },
+        dailyLogs: {
+          ...(currentAccount.dailyLogs || {}),
+          [dailyLog.date]: dailyLog,
+        },
+        workoutSplits,
+        lastLoginAt: new Date().toISOString(),
+      };
+      accounts[userKey] = updatedAccount;
+      saveAccountToStorage(updatedAccount);
+      setCurrentAccount(updatedAccount);
+      sound.play('quest_complete');
+    }
+  }, [currentAccount, profile, dailyLog, workoutSplits]);
+
+  // Login with Hunter Portal credentials (supports user: jon pass: jon)
+  const loginAccount = useCallback(
+    (uName: string, pass: string) => {
+      const cleanUser = uName.trim().toLowerCase();
+      // Ensure jon exists with current progress before checking
+      ensureJonAccountWithCurrentProgress(profile, workoutSplits, { [dailyLog.date]: dailyLog });
+      const accounts = getStoredAccounts();
+      const target = accounts[cleanUser];
+
+      if (!target) {
+        return { success: false, message: `Hunter account "${uName}" not found.` };
+      }
+
+      if (target.password !== pass) {
+        return { success: false, message: 'Invalid password. Access Denied.' };
+      }
+
+      // Successful login
+      target.lastLoginAt = new Date().toISOString();
+      saveAccountToStorage(target);
+      setActiveUsername(target.username);
+      setCurrentAccount(target);
+
+      // Restore user progress
+      if (target.profile) {
+        setProfile(target.profile);
+      }
+      if (target.workoutSplits && target.workoutSplits.length > 0) {
+        setWorkoutSplits(target.workoutSplits);
+        setActiveSplitId(target.workoutSplits[0].splitId);
+      }
+      if (target.dailyLogs && target.dailyLogs[selectedDate]) {
+        setDailyLog(target.dailyLogs[selectedDate]);
+      }
+
+      sound.play('quest_complete');
+      return { success: true, account: target };
+    },
+    [profile, workoutSplits, dailyLog, selectedDate]
+  );
+
+  // Register new Hunter Portal Account
+  const registerAccount = useCallback(
+    (uName: string, pass: string, dispName: string) => {
+      const cleanUser = uName.trim().toLowerCase();
+      const accounts = getStoredAccounts();
+
+      if (accounts[cleanUser]) {
+        return { success: false, message: `Username "${uName}" is already taken.` };
+      }
+
+      const newLevelData = calculateLevelData(0);
+      const newAccountProfile: HunterProfile = {
+        ...defaultInitialProfile,
+        ...newLevelData,
+        userId: `hunter-${cleanUser}`,
+        displayName: dispName.trim() || uName.trim(),
+        totalXp: 0,
+        currentLevelXp: 0,
+        level: 1,
+        stats: defaultHunterStats,
+        streakDays: 1,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      const newAccount: HunterAccountData = {
+        username: cleanUser,
+        password: pass,
+        displayName: dispName.trim() || uName.trim(),
+        createdAt: new Date().toISOString(),
+        lastLoginAt: new Date().toISOString(),
+        profile: newAccountProfile,
+        dailyLogs: {},
+        workoutSplits: initialDefaultSplits,
+      };
+
+      saveAccountToStorage(newAccount);
+      setActiveUsername(cleanUser);
+      setCurrentAccount(newAccount);
+      setProfile(newAccountProfile);
+      setWorkoutSplits(initialDefaultSplits);
+      setActiveSplitId('shadow-ppl-split');
+
+      sound.play('level_up');
+      return { success: true, account: newAccount };
+    },
+    []
+  );
+
+  // Logout from Hunter Account
+  const logoutAccount = useCallback(() => {
+    setActiveUsername(null);
+    setCurrentAccount(null);
+    sound.play('click');
+  }, []);
+
+  // Import Workout Split from JSON File
+  const importSplitFromJson = useCallback(
+    async (importedSplit: WorkoutSplit) => {
+      const updatedSplits = [...workoutSplits, importedSplit];
+      setWorkoutSplits(updatedSplits);
+      setActiveSplitId(importedSplit.splitId);
+      awardXp(200, `Imported Split (.JSON): ${importedSplit.name}`);
+      sound.play('quest_complete');
+
+      if (user) {
+        const splitDocRef = doc(db, 'users', user.uid, 'workoutSplits', importedSplit.splitId);
+        await setDoc(splitDocRef, importedSplit).catch((err) => {
+          handleFirestoreError(err, OperationType.CREATE, `users/${user.uid}/workoutSplits/${importedSplit.splitId}`);
+        });
+      }
+    },
+    [workoutSplits, user, awardXp]
+  );
+
   const closeLevelUpModal = useCallback(() => {
     setLevelUpModalData(null);
   }, []);
@@ -1154,12 +1357,18 @@ export const HunterProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       activeSplitId,
       selectedDate,
       setSelectedDate,
+      currentAccount,
+      loginAccount,
+      registerAccount,
+      logoutAccount,
+      saveProgressToAccount,
       addMeal,
       deleteMeal,
       addCardio,
       deleteCardio,
       toggleExerciseCompletion,
       addWorkoutSplit,
+      importSplitFromJson,
       updateWorkoutSplit,
       deleteWorkoutSplit,
       deleteDayFromSplit,
@@ -1184,12 +1393,18 @@ export const HunterProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       activeSplitId,
       selectedDate,
       setSelectedDate,
+      currentAccount,
+      loginAccount,
+      registerAccount,
+      logoutAccount,
+      saveProgressToAccount,
       addMeal,
       deleteMeal,
       addCardio,
       deleteCardio,
       toggleExerciseCompletion,
       addWorkoutSplit,
+      importSplitFromJson,
       updateWorkoutSplit,
       deleteWorkoutSplit,
       deleteDayFromSplit,

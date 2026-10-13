@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { useHunter } from '../../context/HunterContext';
 import { WorkoutSplit } from '../../types/hunter';
+import { exportSplitToJsonFile, exportAllSplitsToJsonFile } from '../../utils/splitFileUtils';
+import { ImportSplitJsonModal } from './ImportSplitJsonModal';
 import {
   Layers,
   Edit3,
@@ -14,6 +16,9 @@ import {
   Zap,
   Copy,
   Check,
+  Download,
+  FileCode2,
+  FolderDown,
 } from 'lucide-react';
 
 interface SplitManagerModalProps {
@@ -29,9 +34,25 @@ export const SplitManagerModal: React.FC<SplitManagerModalProps> = ({
   onEditSplit,
   onCreateNewSplit,
 }) => {
-  const { workoutSplits, activeSplitId, setActiveSplit, deleteWorkoutSplit } = useHunter();
+  const { workoutSplits, activeSplitId, setActiveSplit, deleteWorkoutSplit, importSplitFromJson } =
+    useHunter();
   const [splitPendingDelete, setSplitPendingDelete] = useState<WorkoutSplit | null>(null);
   const [copiedSplitId, setCopiedSplitId] = useState<string | null>(null);
+  const [downloadedSplitId, setDownloadedSplitId] = useState<string | null>(null);
+  const [isImportModalOpen, setIsImportModalOpen] = useState<boolean>(false);
+  const [allExported, setAllExported] = useState<boolean>(false);
+
+  const handleDownloadSplit = (split: WorkoutSplit) => {
+    exportSplitToJsonFile(split);
+    setDownloadedSplitId(split.splitId);
+    setTimeout(() => setDownloadedSplitId(null), 2500);
+  };
+
+  const handleExportAll = () => {
+    exportAllSplitsToJsonFile(workoutSplits);
+    setAllExported(true);
+    setTimeout(() => setAllExported(false), 2500);
+  };
 
   const handleCopySplit = (split: WorkoutSplit) => {
     try {
@@ -84,22 +105,45 @@ export const SplitManagerModal: React.FC<SplitManagerModalProps> = ({
           </button>
         </div>
 
-        {/* Action bar: Create new split */}
-        <div className="flex items-center justify-between mb-4">
+        {/* Action bar: Import JSON, Backup All, Create new split */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 mb-4 pb-3 border-b border-slate-800/80">
           <span className="text-xs font-mono text-slate-400">
             Total Configured Splits: <strong className="text-white">{workoutSplits.length}</strong>
           </span>
 
-          <button
-            onClick={() => {
-              onClose();
-              onCreateNewSplit();
-            }}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-extrabold text-xs font-heading shadow-[0_0_15px_rgba(6,182,212,0.4)] cursor-pointer transition-all"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>CREATE NEW SPLIT</span>
-          </button>
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Backup all splits button */}
+            <button
+              onClick={handleExportAll}
+              title="Export all configured splits to a single backup JSON file"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 hover:border-slate-600 text-slate-300 hover:text-white text-xs font-mono transition-all cursor-pointer"
+            >
+              <FolderDown className="w-3.5 h-3.5 text-slate-400" />
+              <span>{allExported ? 'EXPORTED ALL!' : 'BACKUP ALL (.JSON)'}</span>
+            </button>
+
+            {/* Import split from JSON file */}
+            <button
+              onClick={() => setIsImportModalOpen(true)}
+              title="Add a custom workout split from a .json file"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-400/60 text-cyan-300 text-xs font-mono transition-all cursor-pointer shadow-[0_0_12px_rgba(6,182,212,0.2)]"
+            >
+              <FileCode2 className="w-3.5 h-3.5 text-cyan-400" />
+              <span>+ ADD SPLIT (.JSON FILE)</span>
+            </button>
+
+            {/* Create new split builder */}
+            <button
+              onClick={() => {
+                onClose();
+                onCreateNewSplit();
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-extrabold text-xs font-heading shadow-[0_0_15px_rgba(6,182,212,0.4)] cursor-pointer transition-all"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>CREATE NEW SPLIT</span>
+            </button>
+          </div>
         </div>
 
         {/* Split List */}
@@ -160,7 +204,7 @@ export const SplitManagerModal: React.FC<SplitManagerModalProps> = ({
                     </div>
 
                     {/* Action buttons */}
-                    <div className="flex items-center gap-1.5 self-end sm:self-center shrink-0">
+                    <div className="flex items-center gap-1.5 self-end sm:self-center shrink-0 flex-wrap">
                       {!isActive && (
                         <button
                           onClick={() => setActiveSplit(split.splitId)}
@@ -169,6 +213,25 @@ export const SplitManagerModal: React.FC<SplitManagerModalProps> = ({
                           ACTIVATE
                         </button>
                       )}
+
+                      {/* Save/Download split as JSON file */}
+                      <button
+                        onClick={() => handleDownloadSplit(split)}
+                        title="Download and save this split as a .json file"
+                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-cyan-950/50 hover:bg-cyan-900/70 border border-cyan-500/40 text-cyan-300 hover:text-white text-xs font-mono transition-colors cursor-pointer"
+                      >
+                        {downloadedSplitId === split.splitId ? (
+                          <>
+                            <Check className="w-3.5 h-3.5 text-green-400" />
+                            <span className="text-green-400 font-bold">SAVED .JSON!</span>
+                          </>
+                        ) : (
+                          <>
+                            <Download className="w-3.5 h-3.5 text-cyan-400" />
+                            <span>SAVE JSON</span>
+                          </>
+                        )}
+                      </button>
 
                       <button
                         onClick={() => handleCopySplit(split)}
@@ -250,6 +313,14 @@ export const SplitManagerModal: React.FC<SplitManagerModalProps> = ({
             </div>
           </div>
         )}
+        {/* Import Split from JSON Modal */}
+        <ImportSplitJsonModal
+          isOpen={isImportModalOpen}
+          onClose={() => setIsImportModalOpen(false)}
+          onImportSuccess={(newSplit) => {
+            importSplitFromJson(newSplit);
+          }}
+        />
       </div>
     </div>
   );

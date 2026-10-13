@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useHunter } from '../../context/HunterContext';
 import { WorkoutDay, ExerciseItem, WorkoutSplit } from '../../types/hunter';
+import { exportSplitToJsonFile } from '../../utils/splitFileUtils';
 import {
   Layers,
   Plus,
@@ -12,6 +13,7 @@ import {
   ChevronDown,
   ChevronUp,
   Sparkles,
+  Download,
 } from 'lucide-react';
 
 interface SplitBuilderProps {
@@ -476,24 +478,46 @@ export const SplitBuilder: React.FC<SplitBuilderProps> = ({ isOpen, onClose, edi
             </div>
           </div>
 
-          {/* Form Submit */}
-          <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
+          {/* Form Submit & Export */}
+          <div className="flex items-center justify-between gap-3 pt-4 border-t border-slate-800 flex-wrap">
             <button
               type="button"
-              onClick={onClose}
-              className="px-4 py-2 rounded-xl text-xs font-mono text-slate-400 hover:text-white"
+              onClick={() => {
+                exportSplitToJsonFile({
+                  splitId: editingSplit?.splitId || `split_${Date.now()}`,
+                  userId: 'local-hunter',
+                  name: splitName.trim() || 'Custom Split Routine',
+                  description: splitDescription,
+                  days,
+                  createdAt: new Date().toISOString(),
+                  updatedAt: new Date().toISOString(),
+                });
+              }}
+              className="px-3 py-2 rounded-xl text-xs font-mono text-cyan-300 hover:text-white bg-cyan-950/40 hover:bg-cyan-900/60 border border-cyan-500/40 flex items-center gap-1.5 cursor-pointer transition-all"
+              title="Save/Download this split routine as a .json file"
             >
-              Cancel
+              <Download className="w-3.5 h-3.5 text-cyan-400" />
+              <span>SAVE AS .JSON FILE</span>
             </button>
 
-            <button
-              type="submit"
-              disabled={!splitName.trim()}
-              className="bg-gradient-to-r from-cyan-400 to-blue-600 hover:from-cyan-300 hover:to-blue-500 text-black font-extrabold px-6 py-2.5 rounded-xl text-xs font-heading shadow-[0_0_20px_rgba(6,182,212,0.4)] transition-all cursor-pointer flex items-center gap-1.5"
-            >
-              <Check className="w-4 h-4" />
-              <span>{editingSplit ? 'UPDATE SPLIT ROUTINE' : 'SAVE CUSTOM SPLIT ROUTINE'}</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 rounded-xl text-xs font-mono text-slate-400 hover:text-white border border-slate-800"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="submit"
+                disabled={!splitName.trim()}
+                className="bg-gradient-to-r from-cyan-400 to-blue-600 hover:from-cyan-300 hover:to-blue-500 text-black font-extrabold px-6 py-2.5 rounded-xl text-xs font-heading shadow-[0_0_20px_rgba(6,182,212,0.4)] transition-all cursor-pointer flex items-center gap-1.5"
+              >
+                <Check className="w-4 h-4" />
+                <span>{editingSplit ? 'UPDATE SPLIT ROUTINE' : 'SAVE CUSTOM SPLIT ROUTINE'}</span>
+              </button>
+            </div>
           </div>
         </form>
       </div>

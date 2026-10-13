@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { useHunter } from '../../context/HunterContext';
 import { ExerciseItem, WorkoutSplit } from '../../types/hunter';
 import { SplitManagerModal } from './SplitManagerModal';
+import { ImportSplitJsonModal } from './ImportSplitJsonModal';
+import { exportSplitToJsonFile } from '../../utils/splitFileUtils';
 import {
   Dumbbell,
   CheckCircle2,
@@ -17,6 +19,8 @@ import {
   ChevronDown,
   Edit3,
   SlidersHorizontal,
+  Download,
+  FileCode2,
 } from 'lucide-react';
 
 interface ActiveWorkoutViewProps {
@@ -39,6 +43,7 @@ export const ActiveWorkoutView: React.FC<ActiveWorkoutViewProps> = ({
     deleteExerciseFromSplit,
     addExerciseToDay,
     addDayToSplit,
+    importSplitFromJson,
   } = useHunter();
 
   const currentSplit =
@@ -46,6 +51,8 @@ export const ActiveWorkoutView: React.FC<ActiveWorkoutViewProps> = ({
 
   const [selectedDayIndex, setSelectedDayIndex] = useState<number>(0);
   const [isSplitManagerOpen, setIsSplitManagerOpen] = useState<boolean>(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState<boolean>(false);
+  const [downloadedSplit, setDownloadedSplit] = useState<boolean>(false);
 
   // Deletion Confirmation States
   const [dayToDelete, setDayToDelete] = useState<{ id: string; name: string } | null>(null);
@@ -205,6 +212,20 @@ export const ActiveWorkoutView: React.FC<ActiveWorkoutViewProps> = ({
             ))}
           </select>
 
+          {/* Save to JSON button */}
+          <button
+            onClick={() => {
+              exportSplitToJsonFile(currentSplit);
+              setDownloadedSplit(true);
+              setTimeout(() => setDownloadedSplit(false), 2000);
+            }}
+            title={`Download split "${currentSplit.name}" as a .json file`}
+            className="text-xs font-mono text-cyan-300 hover:text-white flex items-center gap-1 bg-cyan-950/40 hover:bg-cyan-900/60 px-2.5 py-1.5 rounded-lg border border-cyan-500/40 transition-all cursor-pointer"
+          >
+            <Download className="w-3.5 h-3.5 text-cyan-400" />
+            <span>{downloadedSplit ? 'SAVED .JSON!' : 'SAVE TO JSON'}</span>
+          </button>
+
           {/* Edit Current Split Button */}
           <button
             onClick={() => {
@@ -236,6 +257,16 @@ export const ActiveWorkoutView: React.FC<ActiveWorkoutViewProps> = ({
           >
             <SlidersHorizontal className="w-3.5 h-3.5 text-cyan-400" />
             <span>MANAGE SPLITS</span>
+          </button>
+
+          {/* Import Split from JSON file button */}
+          <button
+            onClick={() => setIsImportModalOpen(true)}
+            className="text-xs font-mono text-cyan-300 hover:text-cyan-200 flex items-center gap-1.5 bg-cyan-950/80 hover:bg-cyan-900/90 px-3 py-1.5 rounded-lg border border-cyan-400/60 transition-all cursor-pointer shrink-0 shadow-[0_0_12px_rgba(6,182,212,0.2)]"
+            title="Add/Import a split from a .json file"
+          >
+            <FileCode2 className="w-3.5 h-3.5 text-cyan-400" />
+            <span>+ ADD SPLIT (.JSON FILE)</span>
           </button>
 
           {/* Add New Custom Split */}
@@ -279,6 +310,14 @@ export const ActiveWorkoutView: React.FC<ActiveWorkoutViewProps> = ({
             >
               <Edit3 className="w-3.5 h-3.5" />
               <span>EDIT THIS SPLIT</span>
+            </button>
+
+            <button
+              onClick={() => setIsImportModalOpen(true)}
+              className="bg-cyan-950/60 hover:bg-cyan-900/60 border border-cyan-500/40 text-cyan-300 font-bold px-4 py-2 rounded-xl text-xs font-mono cursor-pointer flex items-center gap-1.5"
+            >
+              <FileCode2 className="w-3.5 h-3.5" />
+              <span>+ ADD SPLIT (.JSON FILE)</span>
             </button>
 
             <button
@@ -889,6 +928,15 @@ export const ActiveWorkoutView: React.FC<ActiveWorkoutViewProps> = ({
           else onOpenSplitBuilder();
         }}
         onCreateNewSplit={onOpenSplitBuilder}
+      />
+
+      {/* Import Split JSON Modal */}
+      <ImportSplitJsonModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        onImportSuccess={(newSplit) => {
+          importSplitFromJson(newSplit);
+        }}
       />
     </div>
   );
